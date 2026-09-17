@@ -1,0 +1,58 @@
+{
+  "source": {
+    "path": "C:/Users/Sahil Sham's/Documents/antigravity/eager-carson/ShortsAI/input/vidssave.com Arpita had to show Salman Khan how to do the aarti \ud83d\ude02 #salmankhan #shorts #ganpatifestival #ganpati 1080P.mp4",
+    "duration": 8.166667,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30.0,
+    "video_codec": "h264",
+    "has_audio": true,
+    "audio_sample_rate": 44100,
+    "audio_channels": 2
+  },
+  "frames": [
+    {
+      "timestamp": 0.0,
+      "path": "C:/Users/Sahil Sham's/Documents/antigravity/eager-carson/ShortsAI/working/frames/frame_0001.jpg"
+    },
+    {
+      "timestamp": 1.0,
+      "path": "C:/Users/Sahil Sham's/Documents/antigravity/eager-carson/ShortsAI/working/frames/frame_0002.jpg"
+    },
+    {
+      "timestamp": 2.0,
+      "path": "C:/Users/Sahil Sham's/Documents/antigravity/eager-carson/ShortsAI/working/frames/frame_0003.jpg"
+    },
+    {
+      "timestamp": 3.0,
+      "path": "C:/Users/Sahil Sham's/Documents/antigravity/eager-carson/ShortsAI/working/frames/frame_0004.jpg"
+    },
+    {
+      "timestamp": 4.0,
+      "path": "C:/Users/Sahil Sham's/Documents/antigravity/eager-carson/ShortsAI/working/frames/frame_0005.jpg"
+    },
+    {
+      "timestamp": 5.0,
+      "path": "C:/Users/Sahil Sham's/Documents/antigravity/eager-carson/ShortsAI/working/frames/frame_0006.jpg"
+    },
+    {
+      "timestamp": 6.0,
+      "path": "C:/Users/Sahil Sham's/Documents/antigravity/eager-carson/ShortsAI/working/frames/frame_0007.jpg"
+    },
+    {
+      "timestamp": 7.0,
+      "path": "C:/Users/Sahil Sham's/Documents/antigravity/eager-carson/ShortsAI/working/frames/frame_0008.jpg"
+    }
+  ],
+  "transcript": {
+    "available": true,
+    "text": "Sucertal do Caheltao Vantal e Genajinho, Nour Vibor e Vibre e Motr\u00f4.",
+    "segments": [
+      {
+        "start": 0.0,
+        "end": 8.0,
+        "text": "Sucertal do Caheltao Vantal e Genajinho, Nour Vibor e Vibre e Motr\u00f4."
+      }
+    ]
+  }
+}

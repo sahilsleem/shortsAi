@@ -1,0 +1,186 @@
+{
+  "source": {
+    "duration": 8.166667,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30.0,
+    "has_audio": true
+  },
+  "candidates": [
+    {
+      "rank": 1,
+      "timestamp": 1.0,
+      "window_start": 0.0,
+      "window_end": 3.0,
+      "score": 0.3966504065328013,
+      "signals": {
+        "motion": 0.5576098118645606,
+        "audio_energy": 0.5517447985767684,
+        "scene_change": 0.0,
+        "visual_detail": 0.04334771771362866
+      },
+      "speech_segments": [
+        {
+          "start": 0.0,
+          "end": 8.0,
+          "text": "Sucertal do Caheltao Vantal e Genajinho, Nour Vibor e Vibre e Motr\u00f4."
+        }
+      ],
+      "clip_path": "working/candidates/candidate_01.mp4",
+      "frames": [
+        {
+          "timestamp": 0.0,
+          "path": "working/candidates/candidate_01/frame_start.jpg"
+        },
+        {
+          "timestamp": 1.5,
+          "path": "working/candidates/candidate_01/frame_middle.jpg"
+        },
+        {
+          "timestamp": 3.0,
+          "path": "working/candidates/candidate_01/frame_end.jpg"
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "timestamp": 2.0,
+      "window_start": 1.0,
+      "window_end": 4.0,
+      "score": 0.3534092019690472,
+      "signals": {
+        "motion": 0.3817585027838296,
+        "audio_energy": 0.5757735249994758,
+        "scene_change": 0.0,
+        "visual_detail": 0.042861205670539824
+      },
+      "speech_segments": [
+        {
+          "start": 0.0,
+          "end": 8.0,
+          "text": "Sucertal do Caheltao Vantal e Genajinho, Nour Vibor e Vibre e Motr\u00f4."
+        }
+      ],
+      "clip_path": "working/candidates/candidate_02.mp4",
+      "frames": [
+        {
+          "timestamp": 1.0,
+          "path": "working/candidates/candidate_02/frame_start.jpg"
+        },
+        {
+          "timestamp": 2.5,
+          "path": "working/candidates/candidate_02/frame_middle.jpg"
+        },
+        {
+          "timestamp": 4.0,
+          "path": "working/candidates/candidate_02/frame_end.jpg"
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "timestamp": 3.0,
+      "window_start": 2.0,
+      "window_end": 5.0,
+      "score": 0.3531244356059879,
+      "signals": {
+        "motion": 0.40337908118494314,
+        "audio_energy": 0.5592230078527208,
+        "scene_change": 0.0,
+        "visual_detail": 0.04210754054708303
+      },
+      "speech_segments": [
+        {
+          "start": 0.0,
+          "end": 8.0,
+          "text": "Sucertal do Caheltao Vantal e Genajinho, Nour Vibor e Vibre e Motr\u00f4."
+        }
+      ],
+      "clip_path": "working/candidates/candidate_03.mp4",
+      "frames": [
+        {
+          "timestamp": 2.0,
+          "path": "working/candidates/candidate_03/frame_start.jpg"
+        },
+        {
+          "timestamp": 3.5,
+          "path": "working/candidates/candidate_03/frame_middle.jpg"
+        },
+        {
+          "timestamp": 5.0,
+          "path": "working/candidates/candidate_03/frame_end.jpg"
+        }
+      ]
+    },
+    {
+      "rank": 4,
+      "timestamp": 7.0,
+      "window_start": 6.0,
+      "window_end": 8.166667,
+      "score": 0.3204130768684978,
+      "signals": {
+        "motion": 0.4876424254115226,
+        "audio_energy": 0.41791068875954035,
+        "scene_change": 0.0,
+        "visual_detail": 0.03478036870612443
+      },
+      "speech_segments": [
+        {
+          "start": 0.0,
+          "end": 8.0,
+          "text": "Sucertal do Caheltao Vantal e Genajinho, Nour Vibor e Vibre e Motr\u00f4."
+        }
+      ],
+      "clip_path": "working/candidates/candidate_04.mp4",
+      "frames": [
+        {
+          "timestamp": 6.0,
+          "path": "working/candidates/candidate_04/frame_start.jpg"
+        },
+        {
+          "timestamp": 7.0833335,
+          "path": "working/candidates/candidate_04/frame_middle.jpg"
+        },
+        {
+          "timestamp": 8.116667,
+          "path": "working/candidates/candidate_04/frame_end.jpg"
+        }
+      ]
+    },
+    {
+      "rank": 5,
+      "timestamp": 4.0,
+      "window_start": 3.0,
+      "window_end": 6.0,
+      "score": 0.3202775188062336,
+      "signals": {
+        "motion": 0.4639768575254176,
+        "audio_energy": 0.4352510049971562,
+        "scene_change": 0.0,
+        "visual_detail": 0.034920297748729116
+      },
+      "speech_segments": [
+        {
+          "start": 0.0,
+          "end": 8.0,
+          "text": "Sucertal do Caheltao Vantal e Genajinho, Nour Vibor e Vibre e Motr\u00f4."
+        }
+      ],
+      "clip_path": "working/candidates/candidate_05.mp4",
+      "frames": [
+        {
+          "timestamp": 3.0,
+          "path": "working/candidates/candidate_05/frame_start.jpg"
+        },
+        {
+          "timestamp": 4.5,
+          "path": "working/candidates/candidate_05/frame_middle.jpg"
+        },
+        {
+          "timestamp": 6.0,
+          "path": "working/candidates/candidate_05/frame_end.jpg"
+        }
+      ]
+    }
+  ]
+}

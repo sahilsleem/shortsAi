@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "task": {
+    "purpose": "Understand the selected short-form video moment and identify the most useful hook/reveal structure.",
+    "semantic_only": true
+  },
+  "source": {
+    "duration": 8.166667,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30.0,
+    "has_audio": true
+  },
+  "candidate": {
+    "rank": 1,
+    "timestamp": 1.0,
+    "window_start": 0.0,
+    "window_end": 3.0,
+    "deterministic_score": 0.3966504065328013,
+    "decision_confidence": 0.3690631666039629
+  },
+  "visual_evidence": [
+    {
+      "timestamp": 0.0,
+      "path": "working/candidates/candidate_01/frame_start.jpg"
+    },
+    {
+      "timestamp": 1.5,
+      "path": "working/candidates/candidate_01/frame_middle.jpg"
+    },
+    {
+      "timestamp": 3.0,
+      "path": "working/candidates/candidate_01/frame_end.jpg"
+    }
+  ],
+  "speech_evidence": [
+    {
+      "start": 0.0,
+      "end": 8.0,
+      "text": "Sucertal do Caheltao Vantal e Genajinho, Nour Vibor e Vibre e Motr\u00f4."
+    }
+  ],
+  "instructions": {
+    "identify_people": true,
+    "describe_actions": true,
+    "describe_interaction": true,
+    "describe_expression_or_emotion": true,
+    "identify_event_or_moment": true,
+    "identify_hook_opportunity": true,
+    "identify_reveal_opportunity": true,
+    "detect_uncertainty": true,
+    "hallucination_safeguards": [
+      "Never invent a person's identity.",
+      "If identity is not visually established, return 'unknown'.",
+      "Never invent events that cannot be observed.",
+      "Do not treat the Whisper transcript as verified fact.",
+      "Transcript reliability is currently 'unknown'.",
+      "Distinguish observed visual facts from transcript-derived claims.",
+      "If evidence conflicts, report the conflict.",
+      "If something cannot be determined, say 'unknown'.",
+      "Do not fabricate hook/reveal claims."
+    ]
+  },
+  "expected_response_schema": {
+    "scene_summary": "string",
+    "people": [
+      {
+        "description": "string",
+        "identity": "string or unknown",
+        "action": "string"
+      }
+    ],
+    "interaction": "string",
+    "expressions": "string",
+    "event": "string",
+    "hook": {
+      "available": true,
+      "idea": "string"
+    },
+    "reveal": {
+      "available": true,
+      "idea": "string"
+    },
+    "caption_fact_basis": [
+      "string"
+    ],
+    "confidence": 0.0,
+    "uncertainties": [
+      "string"
+    ]
+  }
+}

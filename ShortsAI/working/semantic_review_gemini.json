@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "provider": {
+    "name": "gemini",
+    "model": "gemini-3.6-flash",
+    "inference_performed": true
+  },
+  "request_metadata": {
+    "candidate_rank": 1,
+    "timestamp": 1.0
+  },
+  "semantic_review": {
+    "scene_summary": "A man wearing a beanie, dark t-shirt, and vest holds a flaming ritual plate (aarti thali) during a gathering surrounded by adults and children.",
+    "people": [
+      {
+        "description": "A man wearing a dark beanie, black t-shirt, and vest holding a flaming ritual tray.",
+        "identity": "Salman Khan",
+        "action": "Holding and performing a ritual with a flaming tray in front of a group of people."
+      },
+      {
+        "description": "Surrounding crowd of adults and children standing in traditional and casual attire.",
+        "identity": "unknown",
+        "action": "Watching the man perform the ritual and clapping."
+      }
+    ],
+    "interaction": "The man holds out the burning ritual tray towards the gathering while onlookers watch attentively and clap.",
+    "expressions": "The man holding the plate looks focused on the flame, while members of the surrounding crowd display attentive and amused expressions.",
+    "event": "A ceremonial aarti ritual performed outdoors during a public or festive gathering.",
+    "hook": {
+      "available": true,
+      "idea": "A man in a beanie holds a burning aarti tray in front of an attentive audience during a ceremonial ritual."
+    },
+    "reveal": {
+      "available": true,
+      "idea": "On-screen text notes an error in how the ritual is being performed, framing the moment humorously."
+    },
+    "caption_fact_basis": [
+      "A man in a vest and beanie is holding a flaming tray during an outdoor ceremonial gathering.",
+      "A group of adults and children are watching him perform the ritual.",
+      "On-screen text presents a claim about the manner in which the aarti is performed."
+    ],
+    "confidence": 0.9,
+    "uncertainties": [
+      "Whether the ritual performance was tradition-defying cannot be confirmed solely from the visible motion in static frames.",
+      "The speech evidence transcript contains unrecognizable phonetic noise that does not provide factual support."
+    ]
+  }
+}

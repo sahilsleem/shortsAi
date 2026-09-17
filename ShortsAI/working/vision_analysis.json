@@ -1,0 +1,92 @@
+{
+  "frames": [
+    {
+      "timestamp": 0.0,
+      "description": "",
+      "people": null,
+      "actions": null,
+      "expressions": null,
+      "interaction": "",
+      "interestingness": 0,
+      "error": "Failed to parse JSON from model.",
+      "inference_time": 62.99386286735535
+    },
+    {
+      "timestamp": 1.0,
+      "description": "",
+      "people": null,
+      "actions": null,
+      "expressions": null,
+      "interaction": "",
+      "interestingness": 0,
+      "error": "Failed to parse JSON from model.",
+      "inference_time": 83.54595017433167
+    },
+    {
+      "timestamp": 2.0,
+      "description": "",
+      "people": null,
+      "actions": null,
+      "expressions": null,
+      "interaction": "",
+      "interestingness": 0,
+      "error": "Failed to parse JSON from model.",
+      "inference_time": 58.586713790893555
+    },
+    {
+      "timestamp": 3.0,
+      "description": "",
+      "people": null,
+      "actions": null,
+      "expressions": null,
+      "interaction": "",
+      "interestingness": 0,
+      "error": "Failed to parse JSON from model.",
+      "inference_time": 53.658092975616455
+    },
+    {
+      "timestamp": 4.0,
+      "description": "",
+      "people": null,
+      "actions": null,
+      "expressions": null,
+      "interaction": "",
+      "interestingness": 0,
+      "error": "Failed to parse JSON from model.",
+      "inference_time": 57.92594766616821
+    },
+    {
+      "timestamp": 5.0,
+      "description": "",
+      "people": null,
+      "actions": null,
+      "expressions": null,
+      "interaction": "",
+      "interestingness": 0,
+      "error": "Failed to parse JSON from model.",
+      "inference_time": 53.56173777580261
+    },
+    {
+      "timestamp": 6.0,
+      "description": "",
+      "people": null,
+      "actions": null,
+      "expressions": null,
+      "interaction": "",
+      "interestingness": 0,
+      "error": "Failed to parse JSON from model.",
+      "inference_time": 57.98286008834839
+    },
+    {
+      "timestamp": 7.0,
+      "description": "",
+      "people": null,
+      "actions": null,
+      "expressions": null,
+      "interaction": "",
+      "interestingness": 0,
+      "error": "Failed to parse JSON from model.",
+      "inference_time": 62.79020118713379
+    }
+  ]
+}

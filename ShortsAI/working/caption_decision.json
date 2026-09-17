@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "candidate": {
+    "rank": 1,
+    "timestamp": 1.0
+  },
+  "usable": true,
+  "decision_confidence": 0.95,
+  "fact_basis": [
+    "A man in a vest and beanie is holding a flaming tray during an outdoor ceremonial gathering.",
+    "A group of adults and children are watching him perform the ritual."
+  ],
+  "unsupported_claims": [
+    "Rejected text-based claim: On-screen text presents a claim about the manner in which the aarti is performed.",
+    "Whether the ritual performance was tradition-defying cannot be confirmed solely from the visible motion in static frames.",
+    "The speech evidence transcript contains unrecognizable phonetic noise that does not provide factual support.",
+    "On-screen text presents a claim about the manner in which the aarti is performed.",
+    "Whether the ritual performance was tradition-defying cannot be confirmed solely from the visible motion in static frames.",
+    "The speech evidence transcript contains unrecognizable phonetic noise that does not provide factual support."
+  ],
+  "caption": {
+    "main_text": "A ceremonial aarti brings people together at an outdoor gathering.",
+    "curiosity_text": "",
+    "emoji": "\ud83e\ude94"
+  },
+  "reveal": {
+    "text": "A man holds a flaming tray during a traditional ceremony watched by adults and children."
+  },
+  "constraints": {
+    "max_lines": 2,
+    "safe_width_px": 880,
+    "graphics_allowed": false
+  },
+  "reasoning": [
+    "The caption describes the confirmed outdoor ceremonial aarti ritual based strictly on visual facts.",
+    "Unverified claims regarding tradition-defying aspects or transcript content were omitted.",
+    "No curiosity text was added since there is no verified unresolved teaser in the source evidence."
+  ]
+}
