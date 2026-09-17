@@ -57,41 +57,44 @@ def build_ffmpeg_command(
     
     video_filters = "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080,eq=contrast=1.05:saturation=1.1,unsharp=5:5:0.5:5:5:0.0"
     
-    inputs = [source_video, hook_overlay, reveal_overlay]
+    cmd = [get_ffmpeg_path(), "-y"]
+    
+    # Input 0: Hook video
+    cmd.extend(["-ss", str(hook_start), "-t", str(hook_dur), "-i", source_video])
+    
+    # Input 1: Reveal video
+    cmd.extend(["-ss", str(reveal_start), "-t", str(rev_dur), "-i", source_video])
+    
+    # Input 2: Hook overlay
+    cmd.extend(["-i", hook_overlay])
+    
+    # Input 3: Reveal overlay
+    cmd.extend(["-i", reveal_overlay])
     
     fc = []
     
-    # Hook segment
-    fc.append(f"[0:v]trim=start={hook_start}:end={hook_end},setpts=PTS-STARTPTS[hook_v_trim];")
-    fc.append(f"[hook_v_trim]{video_filters}[hook_v_proc];")
+    # Hook segment (timestamps are reset to 0 because of -ss)
+    fc.append(f"[0:v]setpts=PTS-STARTPTS,{video_filters}[hook_v_proc];")
     fc.append(f"color=c=white:s=1080x1920:d={hook_dur}:r=30[hook_base];")
     fc.append(f"[hook_base][hook_v_proc]overlay=0:420:eof_action=pass[hook_bg1];")
-    fc.append(f"[hook_bg1][1:v]overlay=0:0[hook_bg2];")
+    fc.append(f"[hook_bg1][2:v]overlay=0:0[hook_bg2];")
     fc.append(f"[hook_bg2]fade=t=out:st={max(0, hook_dur - transition_dur)}:d={transition_dur}:c=black[hook_v_final];")
     
-    fc.append(f"[0:a]atrim=start={hook_start}:end={hook_end},asetpts=PTS-STARTPTS[hook_a_trim];")
-    fc.append(f"[hook_a_trim]afade=t=out:st={max(0, hook_dur - transition_dur)}:d={transition_dur}[hook_a_final];")
+    fc.append(f"[0:a]asetpts=PTS-STARTPTS,afade=t=out:st={max(0, hook_dur - transition_dur)}:d={transition_dur}[hook_a_final];")
     
     # Reveal segment
-    fc.append(f"[0:v]trim=start={reveal_start}:end={reveal_end},setpts=PTS-STARTPTS[rev_v_trim];")
-    fc.append(f"[rev_v_trim]{video_filters}[rev_v_proc];")
+    fc.append(f"[1:v]setpts=PTS-STARTPTS,{video_filters}[rev_v_proc];")
     fc.append(f"color=c=white:s=1080x1920:d={rev_dur}:r=30[rev_base];")
     fc.append(f"[rev_base][rev_v_proc]overlay=0:420:eof_action=pass[rev_bg1];")
-    fc.append(f"[rev_bg1][2:v]overlay=0:0[rev_bg2];")
+    fc.append(f"[rev_bg1][3:v]overlay=0:0[rev_bg2];")
     fc.append(f"[rev_bg2]fade=t=in:st=0:d={transition_dur}:c=black[rev_v_final];")
     
-    fc.append(f"[0:a]atrim=start={reveal_start}:end={reveal_end},asetpts=PTS-STARTPTS[rev_a_trim];")
-    fc.append(f"[rev_a_trim]afade=t=in:st=0:d={transition_dur}[rev_a_final];")
+    fc.append(f"[1:a]asetpts=PTS-STARTPTS,afade=t=in:st=0:d={transition_dur}[rev_a_final];")
     
     fc.append(f"[hook_v_final][hook_a_final][rev_v_final][rev_a_final]concat=n=2:v=1:a=1[outv][outa]")
     
     filter_complex = "".join(fc)
 
-    cmd = [get_ffmpeg_path(), "-y"]
-    
-    for inp in inputs:
-        cmd.extend(["-i", inp])
-            
     cmd.extend([
         "-filter_complex", filter_complex,
         "-map", "[outv]",
