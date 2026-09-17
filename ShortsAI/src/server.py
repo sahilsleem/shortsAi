@@ -15,6 +15,13 @@ from src.video_ops import render_video, get_ffprobe_path
 
 app = FastAPI(title="ShortsAI Minimal Backend")
 
+from fastapi.staticfiles import StaticFiles
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+async def get_index():
+    return FileResponse("static/index.html")
+
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
 
 def cleanup_workspace(workspace_dir: str):

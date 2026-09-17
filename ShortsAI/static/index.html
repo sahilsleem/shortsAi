@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ShortsAI</title>
+    <style>
+        :root {
+            --bg-color: #f7f9fa;
+            --text-main: #111827;
+            --text-sub: #6b7280;
+            --accent: #0f766e;
+            --accent-hover: #115e59;
+            --border-color: #e5e7eb;
+            --card-bg: #ffffff;
+            --disabled: #9ca3af;
+            --disabled-bg: #f3f4f6;
+            --focus-ring: rgba(15, 118, 110, 0.15);
+            --border-radius: 12px;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.03), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        header {
+            background-color: var(--card-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 14px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .wordmark {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: var(--text-main);
+        }
+
+        .container {
+            max-width: 560px;
+            margin: 0 auto;
+            padding: 24px 16px 80px 16px;
+        }
+
+        .hero {
+            text-align: left;
+            margin-bottom: 28px;
+        }
+
+        .page-title {
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            letter-spacing: -0.5px;
+            color: var(--text-main);
+        }
+
+        .page-subtitle {
+            font-size: 15px;
+            color: var(--text-sub);
+        }
+
+        .section {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .section-header {
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-sub);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+        
+        .section-desc {
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--text-main);
+        }
+
+        /* Upload Area */
+        .upload-area {
+            border: 2px dashed #cbd5e1;
+            border-radius: 10px;
+            padding: 36px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: #f8fafc;
+        }
+
+        .upload-area:hover {
+            border-color: var(--accent);
+            background: #f0fdfa;
+        }
+
+        .upload-icon {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #e2e8f0;
+            color: #64748b;
+            margin-bottom: 12px;
+        }
+        
+        .upload-area:hover .upload-icon {
+            background: #ccfbf1;
+            color: var(--accent);
+        }
+
+        .upload-icon svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .upload-text {
+            font-weight: 500;
+            font-size: 16px;
+            color: var(--text-main);
+            margin-bottom: 4px;
+        }
+
+        .upload-sub {
+            font-size: 13px;
+            color: var(--text-sub);
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        /* Video Preview */
+        .video-preview-container {
+            display: none;
+            width: 100%;
+        }
+
+        #video-preview {
+            width: 100%;
+            border-radius: 8px;
+            background: #111;
+            max-height: 400px;
+            object-fit: contain;
+            margin-bottom: 12px;
+        }
+
+        .file-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f9fafb;
+            padding: 10px 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+
+        .file-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 70%;
+        }
+
+        .replace-btn {
+            background: none;
+            border: none;
+            color: var(--accent);
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .replace-btn:hover {
+            background: #f0fdfa;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: var(--text-main);
+        }
+
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 16px; /* Prevents iOS zoom */
+            color: var(--text-main);
+            transition: border-color 0.15s, box-shadow 0.15s;
+            background: #fff;
+            -webkit-appearance: none;
+        }
+
+        input[type="text"]:focus, input[type="number"]:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--focus-ring);
+        }
+        
+        input::placeholder {
+            color: #9ca3af;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        
+        /* Input group with suffix */
+        .input-with-suffix {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        
+        .input-with-suffix input {
+            padding-right: 40px;
+        }
+        
+        .suffix {
+            position: absolute;
+            right: 14px;
+            font-size: 13px;
+            color: var(--text-sub);
+            pointer-events: none;
+        }
+
+        /* Button */
+        .btn-generate {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            box-shadow: var(--shadow-md);
+            margin-top: 8px;
+        }
+
+        .btn-generate:hover:not(:disabled) {
+            background-color: var(--accent-hover);
+        }
+        
+        .btn-generate:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+
+        .btn-generate:disabled {
+            background-color: var(--disabled-bg);
+            color: var(--disabled);
+            cursor: not-allowed;
+            box-shadow: none;
+            border: 1px solid var(--border-color);
+        }
+
+        /* Status Message */
+        #status-message {
+            margin-top: 16px;
+            padding: 14px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+            display: none;
+            background: #f0fdfa;
+            color: var(--accent);
+            border: 1px solid #ccfbf1;
+        }
+        
+        /* Mobile specific adjustments */
+        @media (max-width: 480px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            .section {
+                padding: 16px;
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="wordmark">ShortsAI</div>
+    </header>
+
+    <div class="container">
+        <div class="hero">
+            <h1 class="page-title">Create your Short</h1>
+            <p class="page-subtitle">Upload a video, add your captions, and generate.</p>
+        </div>
+
+        <!-- Video Upload Section -->
+        <div class="section">
+            <input type="file" id="file-input" accept="video/mp4,video/x-m4v,video/*">
+            
+            <div class="upload-area" id="upload-area">
+                <div class="upload-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                </div>
+                <div class="upload-text">Select video</div>
+                <div class="upload-sub">MP4 up to 50MB</div>
+            </div>
+
+            <div class="video-preview-container" id="preview-container">
+                <video id="video-preview" controls playsinline></video>
+                <div class="file-info">
+                    <span class="file-name" id="file-name-display">video.mp4</span>
+                    <button class="replace-btn" id="btn-replace">Replace</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hook Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">Hook</div>
+                <div class="section-desc">Opening caption</div>
+            </div>
+            
+            <div class="form-group">
+                <label>Main Text</label>
+                <input type="text" id="hook_main_text" placeholder="E.g. Salman Khan doing it wrong,">
+            </div>
+            
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Curiosity Text (Optional)</label>
+                    <input type="text" id="hook_curiosity_text" placeholder="But then...">
+                </div>
+                <div class="form-group">
+                    <label>Emoji (Optional)</label>
+                    <input type="text" id="hook_emoji" placeholder="😅">
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Start</label>
+                    <div class="input-with-suffix">
+                        <input type="number" id="hook_start" value="0" step="0.1" min="0">
+                        <span class="suffix">sec</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>End</label>
+                    <div class="input-with-suffix">
+                        <input type="number" id="hook_end" value="4" step="0.1" min="0.1">
+                        <span class="suffix">sec</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reveal Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">Reveal</div>
+                <div class="section-desc">Payoff caption</div>
+            </div>
+            
+            <div class="form-group">
+                <label>Main Text</label>
+                <input type="text" id="reveal_main_text" placeholder="E.g. Arpita corrected him!">
+            </div>
+            
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Curiosity Text (Optional)</label>
+                    <input type="text" id="reveal_curiosity_text" placeholder="">
+                </div>
+                <div class="form-group">
+                    <label>Emoji (Optional)</label>
+                    <input type="text" id="reveal_emoji" placeholder="😅❤️">
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Start</label>
+                    <div class="input-with-suffix">
+                        <input type="number" id="reveal_start" value="4" step="0.1" min="0">
+                        <span class="suffix">sec</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>End</label>
+                    <div class="input-with-suffix">
+                        <input type="number" id="reveal_end" value="8" step="0.1" min="0.1">
+                        <span class="suffix">sec</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-generate" id="btn-generate" disabled>Generate Short</button>
+        <div id="status-message"></div>
+
+        <!-- Result Section -->
+        <div class="section" id="result-section" style="display: none; border-color: var(--accent); background: #f0fdfa; margin-top: 24px;">
+            <div class="section-header">
+                <div class="section-title" style="color: var(--accent);">Success</div>
+                <div class="section-desc">Your Short is ready</div>
+            </div>
+            
+            <video id="result-video" controls playsinline style="width: 100%; border-radius: 8px; background: #000; max-height: 400px; object-fit: contain; margin-bottom: 16px;"></video>
+            
+            <div class="grid-2">
+                <button class="btn-generate" id="btn-download" style="margin-top: 0;">Download</button>
+                <button class="btn-generate" id="btn-share" style="margin-top: 0; background: #fff; color: var(--accent); border: 1px solid var(--accent); display: none; box-shadow: none;">Share</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('file-input');
+        const uploadArea = document.getElementById('upload-area');
+        const previewContainer = document.getElementById('preview-container');
+        const videoPreview = document.getElementById('video-preview');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const btnReplace = document.getElementById('btn-replace');
+        const btnGenerate = document.getElementById('btn-generate');
+        const statusMessage = document.getElementById('status-message');
+
+        // Handle upload area click
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Handle replace button
+        btnReplace.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Handle file selection
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                // Show preview
+                const url = URL.createObjectURL(file);
+                videoPreview.src = url;
+                fileNameDisplay.textContent = file.name;
+                
+                uploadArea.style.display = 'none';
+                previewContainer.style.display = 'block';
+                btnGenerate.disabled = false;
+                statusMessage.style.display = 'none';
+            } else {
+                uploadArea.style.display = 'block';
+                previewContainer.style.display = 'none';
+                btnGenerate.disabled = true;
+                videoPreview.src = '';
+            }
+        });
+
+        // Handle generate button
+        let currentResultUrl = null;
+
+        btnGenerate.addEventListener('click', async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+            
+            // Clean up previous result if exists
+            if (currentResultUrl) {
+                URL.revokeObjectURL(currentResultUrl);
+                currentResultUrl = null;
+            }
+            
+            document.getElementById('result-section').style.display = 'none';
+            document.getElementById('result-video').src = '';
+            
+            // UI Loading state
+            btnGenerate.disabled = true;
+            btnGenerate.textContent = "Generating...";
+            
+            statusMessage.style.display = 'block';
+            statusMessage.style.color = 'var(--text-main)';
+            statusMessage.style.background = '#f3f4f6';
+            statusMessage.style.borderColor = '#e5e7eb';
+            statusMessage.textContent = "Creating your Short...";
+
+            // Collect form data
+            const formData = new FormData();
+            formData.append('video', file);
+            formData.append('hook_main_text', document.getElementById('hook_main_text').value || '');
+            formData.append('hook_curiosity_text', document.getElementById('hook_curiosity_text').value || '');
+            formData.append('hook_emoji', document.getElementById('hook_emoji').value || '');
+            formData.append('hook_start', document.getElementById('hook_start').value || '0');
+            formData.append('hook_end', document.getElementById('hook_end').value || '4');
+            
+            formData.append('reveal_main_text', document.getElementById('reveal_main_text').value || '');
+            formData.append('reveal_curiosity_text', document.getElementById('reveal_curiosity_text').value || '');
+            formData.append('reveal_emoji', document.getElementById('reveal_emoji').value || '');
+            formData.append('reveal_start', document.getElementById('reveal_start').value || '4');
+            formData.append('reveal_end', document.getElementById('reveal_end').value || '8');
+
+            try {
+                const response = await fetch('/render', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    let errorDetail = "Failed to render video.";
+                    try {
+                        const errJson = await response.json();
+                        if (errJson.detail) errorDetail = errJson.detail;
+                    } catch(e) {}
+                    throw new Error(errorDetail);
+                }
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('video/mp4')) {
+                    throw new Error("Server did not return a valid MP4 video.");
+                }
+
+                const blob = await response.blob();
+                currentResultUrl = URL.createObjectURL(blob);
+                
+                // Show result
+                const resultVideo = document.getElementById('result-video');
+                resultVideo.src = currentResultUrl;
+                document.getElementById('result-section').style.display = 'block';
+                
+                // Setup Download
+                const btnDownload = document.getElementById('btn-download');
+                btnDownload.onclick = () => {
+                    const a = document.createElement('a');
+                    a.href = currentResultUrl;
+                    a.download = 'shortsai-short.mp4';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                };
+                
+                // Setup Share if supported
+                const btnShare = document.getElementById('btn-share');
+                if (navigator.share && navigator.canShare) {
+                    const fileObj = new File([blob], 'shortsai-short.mp4', { type: 'video/mp4' });
+                    if (navigator.canShare({ files: [fileObj] })) {
+                        btnShare.style.display = 'block';
+                        btnShare.onclick = async () => {
+                            try {
+                                await navigator.share({
+                                    title: 'My ShortsAI Video',
+                                    files: [fileObj]
+                                });
+                            } catch (err) {
+                                console.log("Share failed or cancelled:", err);
+                            }
+                        };
+                    }
+                }
+                
+                // Clear status
+                statusMessage.style.display = 'none';
+                
+            } catch (error) {
+                // Show error state
+                statusMessage.style.color = '#b91c1c';
+                statusMessage.style.background = '#fef2f2';
+                statusMessage.style.borderColor = '#fecaca';
+                statusMessage.textContent = error.message === "Failed to fetch" ? "Something went wrong. Please try again." : error.message;
+            } finally {
+                // Restore button
+                btnGenerate.textContent = "Generate Short";
+                btnGenerate.disabled = false;
+            }
+        });
+
+    </script>
+</body>
+</html>
