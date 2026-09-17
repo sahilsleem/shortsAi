@@ -1,0 +1,15 @@
+﻿.git
+.gitignore
+.dockerignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+working/
+output/
+test_*.py
+tests/
