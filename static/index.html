@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ShortsAI</title>
+    <style>
+        :root { 
+            --bg-color: #f8fafc; 
+            --text-main: #0f172a; 
+            --text-sub: #64748b; 
+            --accent: #0d9488; 
+            --accent-hover: #0f766e;
+            --border-color: #e2e8f0; 
+            --card-bg: #ffffff; 
+            --border-radius: 16px;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-focus: 0 0 0 3px rgba(13, 148, 136, 0.2);
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font-family); }
+        body { background: var(--bg-color); color: var(--text-main); -webkit-font-smoothing: antialiased; }
+        
+        header { 
+            background: var(--card-bg); 
+            border-bottom: 1px solid var(--border-color); 
+            padding: 16px; 
+            text-align: center; 
+            position: sticky; 
+            top: 0; 
+            z-index: 20;
+            box-shadow: var(--shadow-sm);
+        }
+        header h1 { font-size: 18px; font-weight: 700; color: var(--text-main); margin-bottom: 2px; }
+        header p { font-size: 12px; font-weight: 500; color: var(--text-sub); }
+        
+        .container { max-width: 500px; margin: 0 auto; padding: 24px 16px 40px; }
+        
+        .mode-toggle { 
+            display: flex; 
+            background: #e2e8f0; 
+            padding: 4px; 
+            border-radius: 12px; 
+            margin-bottom: 24px; 
+        }
+        .mode-btn { 
+            flex: 1; 
+            text-align: center; 
+            padding: 12px; 
+            font-size: 14px; 
+            font-weight: 600; 
+            color: var(--text-sub); 
+            cursor: pointer; 
+            background: transparent; 
+            border: none; 
+            border-radius: 8px; 
+            transition: all 0.2s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .mode-btn.active { 
+            background: var(--card-bg); 
+            color: var(--accent); 
+            box-shadow: var(--shadow-sm); 
+        }
+
+        .upload-area { 
+            background: var(--card-bg);
+            border: 2px dashed #cbd5e1; 
+            border-radius: var(--border-radius); 
+            padding: 48px 24px; 
+            text-align: center; 
+            cursor: pointer; 
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-sm);
+            -webkit-tap-highlight-color: transparent;
+        }
+        .upload-area:hover { border-color: var(--accent); background: #f0fdfa; }
+        .upload-icon { margin-bottom: 12px; color: var(--accent); }
+        .upload-icon svg { width: 40px; height: 40px; }
+        .upload-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+        .upload-subtitle { font-size: 13px; color: var(--text-sub); }
+        
+        #file-input { display: none; }
+        
+        .section-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-sub);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin: 0 0 8px 4px;
+        }
+        
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .form-group { margin-bottom: 16px; }
+        .form-group:last-child { margin-bottom: 0; }
+        .form-group label { 
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            font-size: 14px; 
+            font-weight: 600; 
+            margin-bottom: 8px; 
+        }
+        .optional-tag { font-size: 12px; font-weight: 500; color: #94a3b8; }
+        
+        input[type="text"], textarea { 
+            width: 100%; 
+            padding: 12px 14px; 
+            border: 1px solid #cbd5e1; 
+            border-radius: 10px; 
+            font-size: 15px; 
+            color: var(--text-main);
+            background: #f8fafc;
+            transition: all 0.2s ease;
+        }
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: #ffffff;
+            box-shadow: var(--shadow-focus);
+        }
+        textarea { resize: vertical; min-height: 80px; }
+        
+        .helper-text { font-size: 13px; color: var(--text-sub); margin-bottom: 16px; }
+        
+        #preview-container { 
+            position: relative; 
+            width: 100%; 
+            background: #000; 
+            overflow: hidden; 
+            border-radius: 12px; 
+            touch-action: none;
+            margin-bottom: 16px;
+            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
+        }
+        #video-element { width: 100%; display: block; }
+        #crop-box { 
+            position: absolute; 
+            border: 2.5px solid #fff; 
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.5), 0 0 10px rgba(0,0,0,0.3) inset; 
+            cursor: move; 
+            border-radius: 2px;
+        }
+        
+        .slider-container { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .slider-icon { color: var(--text-sub); width: 20px; }
+        input[type="range"] { 
+            flex: 1;
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--card-bg);
+            border: 2px solid var(--accent);
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            transition: transform 0.1s;
+        }
+        input[type="range"]::-webkit-slider-thumb:active { transform: scale(1.1); }
+        
+        .timeline-controls { display: flex; flex-direction: column; gap: 16px; }
+        .play-row { 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .play-btn { 
+            background: var(--accent); 
+            color: white; 
+            border: none; 
+            border-radius: 50%; 
+            width: 44px; 
+            height: 44px; 
+            cursor: pointer; 
+            font-size: 20px; 
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-md);
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .play-btn:active { transform: scale(0.95); }
+        
+        .range-row { 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+            padding: 4px 0;
+        }
+        .range-label { font-size: 13px; font-weight: 700; width: 44px; }
+        .label-start { color: #3b82f6; }
+        .label-cut { color: #ef4444; }
+        .label-end { color: #8b5cf6; }
+        .time-val { 
+            width: 68px; 
+            text-align: right; 
+            color: var(--text-sub); 
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 13px;
+        }
+        
+        .btn { 
+            width: 100%; 
+            padding: 16px; 
+            background: var(--accent); 
+            color: #fff; 
+            border: none; 
+            border-radius: 12px; 
+            font-size: 16px; 
+            font-weight: 700; 
+            cursor: pointer; 
+            box-shadow: var(--shadow-md);
+            transition: all 0.2s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 6px 8px -1px rgba(0,0,0,0.1); }
+        .btn:active:not(:disabled) { transform: translateY(1px); box-shadow: var(--shadow-sm); }
+        .btn:disabled { background: #cbd5e1; box-shadow: none; cursor: not-allowed; opacity: 0.8; }
+        
+        #result-section { text-align: center; }
+        .result-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; color: var(--accent); }
+        #result-video { 
+            width: 100%; 
+            border-radius: 12px; 
+            margin-bottom: 20px; 
+            background: #000;
+            box-shadow: var(--shadow-md);
+        }
+        
+        #status-message { font-size: 14px; font-weight: 500; color: var(--text-sub); }
+        
+    </style>
+</head>
+<body>
+    <header>
+        <h1>ShortsAI</h1>
+        <p>Simple Shorts Editor</p>
+    </header>
+    
+    <div class="container">
+        <div class="mode-toggle">
+            <button class="mode-btn active" id="mode-curiosity">Curiosity Video</button>
+            <button class="mode-btn" id="mode-main">Main Video</button>
+        </div>
+
+        <div class="upload-area" id="upload-area">
+            <div class="upload-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+            </div>
+            <div class="upload-title">Upload your video</div>
+            <div class="upload-subtitle">Choose a video from your device</div>
+        </div>
+        <input type="file" id="file-input" accept="video/mp4,video/quicktime">
+        
+        <div id="editor-section" style="display:none;">
+            
+            <div class="section-label">Video & Crop</div>
+            <div class="card">
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <div class="slider-container">
+                        <svg class="slider-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+                        <input type="range" id="zoom-slider" min="30" max="100" value="100" title="Zoom In/Out">
+                        <svg class="slider-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+                    </div>
+                </div>
+                
+                <div id="preview-container">
+                    <video id="video-element" playsinline muted></video>
+                    <div id="crop-box"></div>
+                </div>
+                
+                <div class="timeline-controls" style="margin-top: 16px;">
+                    <div class="range-row">
+                        <span class="range-label label-start">Start</span>
+                        <input type="range" id="start-slider" min="0" max="100" value="0" step="0.001">
+                        <span class="time-val" id="start-val">00:00.000</span>
+                    </div>
+                    
+                    <div class="range-row" id="cut-slider-row">
+                        <span class="range-label label-cut">Cut ✂</span>
+                        <input type="range" id="cut-slider" min="0" max="100" value="50" step="0.001">
+                        <span class="time-val" id="cut-val">00:00.000</span>
+                    </div>
+                    
+                    <div class="range-row">
+                        <span class="range-label label-end">End</span>
+                        <input type="range" id="end-slider" min="0" max="100" value="100" step="0.001">
+                        <span class="time-val" id="end-val">00:00.000</span>
+                    </div>
+                    
+                    <div class="play-row" style="border-bottom: none; border-top: 1px solid var(--border-color); padding-bottom: 0; padding-top: 16px; margin-top: 4px;">
+                        <button class="play-btn" id="play-btn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        </button>
+                        <div>
+                            <div style="font-size:14px; font-weight:600;">Play selected clip</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-label">Captions</div>
+            <div class="card">
+                <div class="form-group">
+                    <label>Main Caption</label>
+                    <textarea id="caption-main" placeholder="E.g. Salman was doing it wrong, but then..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label><span>Main Caption Emoji</span> <span class="optional-tag">Optional</span></label>
+                    <input type="text" id="caption-emoji-main" placeholder="🤔">
+                </div>
+                
+                <div id="curiosity-fields">
+                    <div style="height: 1px; background: var(--border-color); margin: 24px 0;"></div>
+                    <div class="form-group">
+                        <label>Curiosity Caption</label>
+                        <textarea id="caption-curiosity" placeholder="E.g. Arpita stepped in!"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label><span>Curiosity Caption Emoji</span> <span class="optional-tag">Optional</span></label>
+                        <input type="text" id="caption-emoji-curiosity" placeholder="🔥">
+                    </div>
+                </div>
+            </div>
+            
+            <button class="btn" id="btn-generate">Render Video</button>
+            <div id="status-message" style="margin-top:12px; text-align:center; min-height: 20px;"></div>
+        </div>
+
+        <div class="card" id="result-section" style="display: none; margin-top: 20px;">
+            <div class="result-title">Your video is ready</div>
+            <video id="result-video" controls playsinline></video>
+            <button class="btn" id="btn-download">Download Video</button>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('file-input');
+        const uploadArea = document.getElementById('upload-area');
+        const editorSection = document.getElementById('editor-section');
+        const previewContainer = document.getElementById('preview-container');
+        const videoElement = document.getElementById('video-element');
+        const cropBox = document.getElementById('crop-box');
+        const zoomSlider = document.getElementById('zoom-slider');
+        const startSlider = document.getElementById('start-slider');
+        const cutSlider = document.getElementById('cut-slider');
+        const endSlider = document.getElementById('end-slider');
+        const startVal = document.getElementById('start-val');
+        const cutVal = document.getElementById('cut-val');
+        const endVal = document.getElementById('end-val');
+        const playBtn = document.getElementById('play-btn');
+        const resultSection = document.getElementById('result-section');
+        
+        let currentMode = 'curiosity';
+        document.getElementById('mode-curiosity').onclick = (e) => {
+            currentMode = 'curiosity';
+            e.target.classList.add('active');
+            document.getElementById('mode-main').classList.remove('active');
+            document.getElementById('curiosity-fields').style.display = 'block';
+            document.getElementById('cut-slider-row').style.display = 'flex';
+        };
+        document.getElementById('mode-main').onclick = (e) => {
+            currentMode = 'main';
+            e.target.classList.add('active');
+            document.getElementById('mode-curiosity').classList.remove('active');
+            document.getElementById('curiosity-fields').style.display = 'none';
+            document.getElementById('cut-slider-row').style.display = 'none';
+        };
+
+        uploadArea.onclick = () => fileInput.click();
+
+        let origW, origH, maxCropSize, currentCropSize = 0, cropX = 0, cropY = 0;
+        let isPlaying = false;
+        let playbackLoopId = null;
+
+        function formatTime(s) {
+            const m = Math.floor(s / 60);
+            const sec = Math.floor(s % 60);
+            const ms = Math.floor((s % 1) * 1000);
+            return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+        }
+        
+        function checkLoop() {
+            if (!isPlaying) return;
+            const start = parseFloat(startSlider.value);
+            const end = parseFloat(endSlider.value);
+            if (videoElement.currentTime >= end) {
+                videoElement.currentTime = start;
+            }
+            playbackLoopId = requestAnimationFrame(checkLoop);
+        }
+        
+        const playIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+        const pauseIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+        
+        function stopPlayback() {
+            isPlaying = false;
+            videoElement.pause();
+            playBtn.innerHTML = playIcon;
+            if (playbackLoopId !== null) {
+                cancelAnimationFrame(playbackLoopId);
+                playbackLoopId = null;
+            }
+        }
+
+        fileInput.onchange = (e) => {
+            if(!e.target.files[0]) return;
+            
+            stopPlayback();
+            
+            const url = URL.createObjectURL(e.target.files[0]);
+            videoElement.src = url;
+            videoElement.load();
+            
+            videoElement.onloadedmetadata = () => {
+                const dur = videoElement.duration;
+                startSlider.max = dur;
+                cutSlider.max = dur;
+                endSlider.max = dur;
+                startSlider.value = 0;
+                cutSlider.value = dur / 2;
+                endSlider.value = dur;
+                
+                startVal.innerText = formatTime(0);
+                cutVal.innerText = formatTime(dur / 2);
+                endVal.innerText = formatTime(dur);
+                
+                videoElement.currentTime = dur / 2;
+                
+                uploadArea.style.display = 'none';
+                editorSection.style.display = 'block';
+                resultSection.style.display = 'none';
+                
+                origW = videoElement.videoWidth;
+                origH = videoElement.videoHeight;
+                maxCropSize = Math.min(origW, origH);
+                
+                zoomSlider.value = 100;
+                updateCropBoxSize();
+                
+                cropBox.style.left = ((100 - parseFloat(cropBox.style.width)) / 2) + '%';
+                cropBox.style.top = Math.min(((100 - parseFloat(cropBox.style.height)) / 2), 20) + '%';
+                updateCropCoords();
+            };
+        };
+        
+        startSlider.oninput = () => {
+            let s = parseFloat(startSlider.value);
+            let c = parseFloat(cutSlider.value);
+            let e = parseFloat(endSlider.value);
+            if (s >= c) {
+                c = Math.min(s + 0.001, e - 0.001);
+                if (s >= c) s = Math.max(c - 0.001, 0);
+                cutSlider.value = c;
+                cutVal.innerText = formatTime(c);
+                startSlider.value = s;
+            }
+            startVal.innerText = formatTime(s);
+            videoElement.currentTime = s;
+        };
+        
+        cutSlider.oninput = () => {
+            let s = parseFloat(startSlider.value);
+            let c = parseFloat(cutSlider.value);
+            let e = parseFloat(endSlider.value);
+            if (c <= s) {
+                c = Math.min(s + 0.001, e - 0.001);
+                cutSlider.value = c;
+            }
+            if (c >= e) {
+                c = Math.max(e - 0.001, s + 0.001);
+                cutSlider.value = c;
+            }
+            cutVal.innerText = formatTime(c);
+            videoElement.currentTime = c;
+        };
+        
+        endSlider.oninput = () => {
+            let s = parseFloat(startSlider.value);
+            let c = parseFloat(cutSlider.value);
+            let e = parseFloat(endSlider.value);
+            if (e <= c) {
+                c = Math.max(e - 0.001, s + 0.001);
+                if (e <= c) e = Math.min(c + 0.001, videoElement.duration);
+                cutSlider.value = c;
+                cutVal.innerText = formatTime(c);
+                endSlider.value = e;
+            }
+            endVal.innerText = formatTime(e);
+            videoElement.currentTime = e;
+        };
+        
+        playBtn.onclick = () => {
+            if (isPlaying) {
+                stopPlayback();
+            } else {
+                let s = parseFloat(startSlider.value);
+                let e = parseFloat(endSlider.value);
+                if (videoElement.currentTime < s || videoElement.currentTime >= e) {
+                    videoElement.currentTime = s;
+                }
+                videoElement.play();
+                isPlaying = true;
+                playBtn.innerHTML = pauseIcon;
+                checkLoop();
+            }
+        };
+        
+        zoomSlider.oninput = () => {
+            updateCropBoxSize();
+            enforceBounds();
+            updateCropCoords();
+        };
+        
+        function updateCropBoxSize() {
+            const pct = zoomSlider.value / 100;
+            currentCropSize = maxCropSize * pct;
+            const cssW = (currentCropSize / origW) * 100;
+            const cssH = (currentCropSize / origH) * 100;
+            cropBox.style.width = cssW + '%';
+            cropBox.style.height = cssH + '%';
+        }
+        
+        let isDragging = false;
+        let startX, startY, startLeft, startTop;
+        const getClientXY = (e) => e.touches ? [e.touches[0].clientX, e.touches[0].clientY] : [e.clientX, e.clientY];
+
+        const startDrag = (e) => { 
+            isDragging = true; 
+            const [cx, cy] = getClientXY(e);
+            startX = cx; startY = cy; 
+            startLeft = parseFloat(cropBox.style.left) || 0; 
+            startTop = parseFloat(cropBox.style.top) || 0; 
+            e.preventDefault();
+        };
+        
+        cropBox.onmousedown = startDrag;
+        cropBox.ontouchstart = startDrag;
+        window.onmouseup = () => { isDragging = false; };
+        window.ontouchend = () => { isDragging = false; };
+        
+        const doDrag = (e) => {
+            if(!isDragging) return;
+            const [cx, cy] = getClientXY(e);
+            const containerRect = previewContainer.getBoundingClientRect();
+            const dx = (cx - startX) / containerRect.width * 100;
+            const dy = (cy - startY) / containerRect.height * 100;
+            cropBox.style.left = (startLeft + dx) + '%';
+            cropBox.style.top = (startTop + dy) + '%';
+            enforceBounds();
+            updateCropCoords();
+        };
+        
+        window.onmousemove = doDrag;
+        window.ontouchmove = doDrag;
+        
+        function enforceBounds() {
+            let left = parseFloat(cropBox.style.left) || 0;
+            let top = parseFloat(cropBox.style.top) || 0;
+            const w = parseFloat(cropBox.style.width);
+            const h = parseFloat(cropBox.style.height);
+            if(left < 0) left = 0;
+            if(left + w > 100) left = 100 - w;
+            if(top < 0) top = 0;
+            if(top + h > 100) top = 100 - h;
+            cropBox.style.left = left + '%';
+            cropBox.style.top = top + '%';
+        }
+        
+        function updateCropCoords() {
+            const leftP = parseFloat(cropBox.style.left) / 100;
+            const topP = parseFloat(cropBox.style.top) / 100;
+            cropX = Math.round(leftP * origW);
+            cropY = Math.round(topP * origH);
+        }
+
+        const btnGenerate = document.getElementById('btn-generate');
+        const statusMsg = document.getElementById('status-message');
+        
+        btnGenerate.onclick = async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+            
+            btnGenerate.disabled = true;
+            statusMsg.innerText = "Rendering fixed-crop video...";
+            resultSection.style.display = 'none';
+            stopPlayback();
+            
+            const fd = new FormData();
+            fd.append('video', file);
+            fd.append('mode', currentMode);
+            fd.append('start_time', parseFloat(startSlider.value));
+            fd.append('cut_time', parseFloat(cutSlider.value));
+            fd.append('end_time', parseFloat(endSlider.value));
+            fd.append('crop_x', cropX);
+            fd.append('crop_y', cropY);
+            fd.append('crop_size', Math.round(currentCropSize));
+            fd.append('caption_main', document.getElementById('caption-main').value);
+            fd.append('caption_main_emoji', document.getElementById('caption-emoji-main').value);
+            fd.append('caption_curiosity', document.getElementById('caption-curiosity').value);
+            fd.append('caption_curiosity_emoji', document.getElementById('caption-emoji-curiosity').value);
+            
+            try {
+                const res = await fetch('/render', { method: 'POST', body: fd });
+                if(!res.ok) throw new Error("Render failed");
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                document.getElementById('result-video').src = url;
+                resultSection.style.display = 'block';
+                
+                // Scroll to result smoothly
+                setTimeout(() => {
+                    resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+                
+                document.getElementById('btn-download').onclick = () => {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `shortsai_${currentMode}.mp4`;
+                    a.click();
+                };
+                statusMsg.innerText = ""; // Clear status when done
+            } catch(e) {
+                statusMsg.innerText = "Error rendering video";
+            } finally {
+                btnGenerate.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>

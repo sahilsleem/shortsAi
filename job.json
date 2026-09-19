@@ -1,0 +1,18 @@
+{
+    "source_video": "input/vidssave.com Arpita had to show Salman Khan how to do the aarti 😂 #salmankhan #shorts #ganpatifestival #ganpati 1080P.mp4",
+    "output_video": "output/short.mp4",
+    "hook_caption": {
+        "main_text": "Salman Khan was confidently doing the aarti the wrong way,",
+        "curiosity_text": "But then...",
+        "emoji": "😅"
+    },
+    "reveal_caption": {
+        "main_text": "Arpita gently stepped in and corrected him with a smile!",
+        "curiosity_text": "",
+        "emoji": "😅❤️"
+    },
+    "hook_start": 0.0,
+    "hook_end": 4.0,
+    "reveal_start": 4.0,
+    "reveal_end": 8.2
+}
