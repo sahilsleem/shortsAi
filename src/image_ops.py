@@ -173,8 +173,8 @@ def generate_text_overlay(
 ):
     img = Image.new("RGBA", (1080, 1920), (0, 0, 0, 0))
     
-    # User requested approx 880 max width for 100px breathing room
-    draw_caption(img, caption, font_path, font_size=font_size, max_width=880)
+    # User requested exactly 936px max width to sit 36px inside the 1008px video frame
+    draw_caption(img, caption, font_path, font_size=font_size, max_width=936)
     
     img.save(output_path)
     return output_path

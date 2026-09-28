@@ -140,7 +140,7 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     
                     if mode == "main":
                         cap = CaptionData(main_text=caption_main, curiosity_text="", emoji=caption_main_emoji)
-                        fs = compute_best_font_size([cap], font_path, 880, 3)
+                        fs = compute_best_font_size([cap], font_path, 936, 3)
                         overlay_path = workspace / "overlay.png"
                         generate_text_overlay(cap, font_path, fs, str(overlay_path))
                         
@@ -159,7 +159,7 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                             
                         cap_hook = CaptionData(main_text=hook_black, curiosity_text=hook_red, emoji=caption_main_emoji)
                         cap_reveal = CaptionData(main_text=caption_curiosity, curiosity_text="", emoji=caption_curiosity_emoji)
-                        fs = compute_best_font_size([cap_hook, cap_reveal], font_path, 880, 3)
+                        fs = compute_best_font_size([cap_hook, cap_reveal], font_path, 936, 3)
                         
                         hook_overlay = workspace / "hook.png"
                         reveal_overlay = workspace / "reveal.png"
