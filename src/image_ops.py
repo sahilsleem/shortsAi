@@ -105,17 +105,25 @@ def wrap_words(words, font, max_width, draw, pilmoji_context):
         
     return lines
 
-def get_font_scale(font_path: str) -> float:
-    name = font_path.lower()
-    if "caslon" in name:
-        return 1.3
-    if "alike" in name:
-        return 1.25
-    if "sourcesanspro" in name:
-        return 1.2
-    if "firamono" in name:
-        return 1.15
-    return 1.0
+def measure_footprint(lines, font, pilmoji_context, draw):
+    if not lines:
+        return 0, 0
+    space_w = get_text_width(" ", font, pilmoji_context, draw)
+    max_w = 0
+    for line in lines:
+        w = sum(get_text_width(word, font, pilmoji_context, draw) for word, c in line) + space_w * max(0, len(line) - 1)
+        if w > max_w:
+            max_w = w
+            
+    if pilmoji_context:
+        _, lh = pilmoji_context.getsize("AydY~.", font=font)
+    else:
+        bbox = draw.textbbox((0,0), "AydY~.", font=font)
+        lh = bbox[3] - bbox[1]
+        
+    line_spacing = font.size * 0.1
+    total_h = (len(lines) * lh) + (max(0, len(lines) - 1) * line_spacing)
+    return max_w, total_h
 
 def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: int) -> int:
     img = Image.new("RGBA", (10, 10))
@@ -124,29 +132,79 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
     if Pilmoji:
         pilmoji_context = Pilmoji(img, source=AppleEmojiSource)
         
-    scale = get_font_scale(font_path)
-    MAX_FONT = int(82 * scale)
-    MIN_FONT = int(38 * scale)
-    
+    words = get_word_list(caption)
+    if not words:
+        return int(82 * 0.8)
+
+    # 1. Calistoga Reference Baseline
+    CALISTOGA_PATH = str(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts", "Calistoga-Regular.ttf"))
+    if not os.path.exists(CALISTOGA_PATH):
+        CALISTOGA_PATH = "fonts/Calistoga-Regular.ttf"
+
+    cal_fs = 82
+    cal_lines = None
+    cal_font = None
     for target_lines in range(1, max_lines + 1):
-        font_size = MAX_FONT
-        while font_size >= MIN_FONT:
+        found = False
+        for fs in range(82, 37, -2):
             try:
-                font = ImageFont.truetype(font_path, font_size)
+                font = ImageFont.truetype(CALISTOGA_PATH, fs)
             except IOError:
-                return int(35 * scale * 0.8)
-                
-            words = get_word_list(caption)
-            if not words:
-                return int(font_size * 0.8)
-                
+                font = ImageFont.load_default()
             lines = wrap_words(words, font, max_width, draw, pilmoji_context)
             if lines is not None and len(lines) <= target_lines:
-                return int(font_size * 0.8)
-                
-            font_size -= max(1, int(2 * scale))
+                cal_fs = fs
+                cal_lines = lines
+                cal_font = font
+                found = True
+                break
+        if found:
+            break
             
-    return int(MIN_FONT * 0.8)
+    if not cal_lines:
+        cal_fs = 38
+        cal_font = ImageFont.truetype(CALISTOGA_PATH, 38)
+        cal_lines = wrap_words(words, cal_font, max_width, draw, pilmoji_context) or []
+
+    cal_w, cal_h = measure_footprint(cal_lines, cal_font, pilmoji_context, draw)
+    target_area = cal_w * cal_h
+    target_line_count = len(cal_lines) if cal_lines else 1
+
+    # If the requested font is Calistoga, just apply the 20% reduction and return
+    if os.path.normpath(font_path) == os.path.normpath(CALISTOGA_PATH):
+        return int(cal_fs * 0.8)
+
+    # 2. Dynamic Calibration for Alternative Fonts
+    best_fs = 38
+    best_diff = float('inf')
+    
+    # Alternative fonts may need to scale up to ~150px to match Calistoga's massive x-height
+    for fs in range(150, 20, -1):
+        try:
+            alt_font = ImageFont.truetype(font_path, fs)
+        except IOError:
+            continue
+            
+        alt_lines = wrap_words(words, alt_font, max_width, draw, pilmoji_context)
+        if alt_lines is None:
+            continue
+            
+        # Strongly enforce matching line counts to mirror Calistoga's layout density
+        if len(alt_lines) > target_line_count:
+            continue
+            
+        alt_w, alt_h = measure_footprint(alt_lines, alt_font, pilmoji_context, draw)
+        alt_area = alt_w * alt_h
+        
+        area_diff = abs(alt_area - target_area)
+        line_diff = abs(len(alt_lines) - target_line_count) * 1000000 # Penalize structural mismatches
+        total_diff = area_diff + line_diff
+        
+        if total_diff < best_diff:
+            best_diff = total_diff
+            best_fs = fs
+
+    return int(best_fs * 0.8)
 
 def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_width: int):
     draw = ImageDraw.Draw(img)
@@ -165,34 +223,37 @@ def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_
         
     best_lines = wrap_words(words, best_font, max_width, draw, pilmoji_context) or []
         
-    # Positioning logic
+    # Baseline anchoring logic
     if pilmoji_context:
         _, line_height = pilmoji_context.getsize("AydY~.", font=best_font)
     else:
         bbox = draw.textbbox((0, 0), "AydY~.", font=best_font)
         line_height = bbox[3] - bbox[1]
         
+    try:
+        ascent, descent = best_font.getmetrics()
+    except AttributeError:
+        ascent = line_height * 0.8
+        
     line_spacing = font_size * 0.1
-    total_height = (len(best_lines) * line_height) + (max(0, len(best_lines) - 1) * line_spacing)
     
-    # User requested BOTTOM edge at approximately Y=390 (30px gap)
-    current_y = 390 - total_height
+    # Anchor the baseline of the LAST line consistently at Y=375 for all fonts.
+    # This guarantees identical 30-35px separation from the Y=420 video frame 
+    # regardless of an alternative font's descender depth.
+    last_line_top = 375 - ascent
+    current_y = last_line_top - (max(0, len(best_lines) - 1) * (line_height + line_spacing))
+    
     space_w = get_text_width(" ", best_font, pilmoji_context, draw)
     
     for line in best_lines:
         line_width = sum(get_text_width(w, best_font, pilmoji_context, draw) for w, c in line) + space_w * (len(line) - 1)
         current_x = (img.width - line_width) // 2
         
-        # 1. Draw all emojis in the line at once using the full string context.
-        # This guarantees perfect vertical baseline alignment across the whole line.
         if pilmoji_context:
             full_line_text = " ".join(w for w, c in line)
             pilmoji_context.text((current_x, current_y), full_line_text, fill=(0, 0, 0, 0), font=best_font)
             
-        # 2. Draw the text manually word-by-word to support multi-color (black/red).
         for word, color in line:
-            # Strip ALL emojis out for the Pillow text drawing pass
-            # This prevents Pillow from rendering missing glyph tofu ("XXX") behind the Pilmoji images
             text_only = emoji.replace_emoji(word, "")
                 
             if text_only.strip():
