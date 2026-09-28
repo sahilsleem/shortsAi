@@ -137,9 +137,11 @@ def build_gemini_payload(context: str, previous_generations: list = None) -> dic
             }
         ],
         "generationConfig": {
-            "temperature": 0.8,
-            "maxOutputTokens": 256,
-            "responseMimeType": "application/json"
+            "thinkingConfig": {
+                "thinkingLevel": "low"
+            },
+            "responseMimeType": "application/json",
+            "maxOutputTokens": 1024
         }
     }
 
@@ -164,7 +166,10 @@ def generate_captions(context: str, previous_generations: list = None, api_key: 
     req = urllib.request.Request(
         endpoint,
         data=req_body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": key
+        },
         method="POST"
     )
 
@@ -198,8 +203,9 @@ def generate_captions(context: str, previous_generations: list = None, api_key: 
 
     first_cand = candidates[0]
     parts = first_cand.get("content", {}).get("parts", [])
-    if not parts or "text" not in parts[0]:
-        raise GeminiAPIError("Gemini returned an empty content part.")
+    text_parts = [p["text"] for p in parts if isinstance(p, dict) and "text" in p and p.get("text")]
+    if not text_parts:
+        raise GeminiAPIError("Gemini returned no text content.")
 
-    raw_text = parts[0]["text"]
+    raw_text = "".join(text_parts)
     return parse_gemini_response(raw_text)

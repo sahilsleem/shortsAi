@@ -91,6 +91,20 @@ def test_build_gemini_payload_with_and_without_retries():
     assert "Saba Bollywood" in prompt1
     assert "DO NOT repeat" not in prompt1
 
+    # Verify Gemini 3.8 Flash generationConfig compliance
+    gen_config = payload1.get("generationConfig", {})
+    assert gen_config.get("responseMimeType") == "application/json"
+    assert gen_config.get("maxOutputTokens") == 1024
+    assert gen_config.get("thinkingConfig") == {"thinkingLevel": "low"}
+
+    # Assert absence of deprecated sampling parameters
+    assert "temperature" not in gen_config
+    assert "top_p" not in gen_config
+    assert "top_k" not in gen_config
+    assert "candidate_count" not in gen_config
+    assert "thinking_budget" not in gen_config
+    assert "thinkingBudget" not in gen_config
+
     # With previous generations (retry behavior)
     prev = [
         {"main_caption": "Salman Khan At Mumbai Airport, But Then...", "curiosity_caption": "Fans Rushed Over To Hug Him"},
@@ -159,11 +173,13 @@ def test_successful_api_flow(monkeypatch):
         "main_caption": "Ranbir Kapoor Was Spotted Leaving The Gym, But Then...",
         "curiosity_caption": "He Noticed The Paparazzi Waiting Outside"
     }
+    # Response with thought part preceding the text part (standard in Gemini 3.8 thinking mode)
     api_response = {
         "candidates": [
             {
                 "content": {
                     "parts": [
+                        {"thought": "Thinking deeply about the scene and creating an open loop..."},
                         {"text": json.dumps(expected_data)}
                     ]
                 }
@@ -171,6 +187,7 @@ def test_successful_api_flow(monkeypatch):
         ]
     }
 
+    captured_req = None
     class MockResponse:
         def __enter__(self):
             return self
@@ -179,13 +196,23 @@ def test_successful_api_flow(monkeypatch):
         def read(self):
             return json.dumps(api_response).encode("utf-8")
 
-    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=15: MockResponse())
+    def mock_urlopen(req, timeout=15):
+        nonlocal captured_req
+        captured_req = req
+        return MockResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
 
     res = generate_captions(context="Ranbir Kapoor leaving gym saw paparazzi", api_key="test_key")
     assert res["main_caption"] == expected_data["main_caption"]
     assert res["curiosity_caption"] == expected_data["curiosity_caption"]
     assert "," in res["main_caption"]
     assert res["main_caption"] != res["curiosity_caption"]
+
+    # Verify authentication headers and endpoint
+    assert captured_req is not None
+    assert captured_req.get_header("X-goog-api-key") == "test_key"
+    assert "key=test_key" in captured_req.full_url
 
 def test_server_endpoint_handling(monkeypatch):
     """Verify ShortsAIHandler POST /api/generate_captions routing and responses."""
