@@ -113,8 +113,22 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                 crop_y = int(form_data.get('crop_y', 0))
                 crop_size = int(form_data.get('crop_size', 1080))
                 
+                FONT_REGISTRY = {
+                    "Calistoga": "fonts/Calistoga-Regular.ttf",
+                    "Alike": "fonts/Alike-Regular.ttf",
+                    "Caslon OS": "fonts/CaslonOS-Regular.otf",
+                    "Fira Mono": "fonts/FiraMono-Regular.ttf",
+                    "Source Sans Pro": "fonts/SourceSansPro-Regular.ttf"
+                }
+
                 caption_main = form_data.get('caption_main', '')
+                font_main_key = form_data.get('font_main', 'Calistoga')
+                font_main = str(Path(FONT_REGISTRY.get(font_main_key, "fonts/Calistoga-Regular.ttf")).resolve())
+                
                 caption_curiosity = form_data.get('caption_curiosity', '')
+                font_curiosity_key = form_data.get('font_curiosity', 'Calistoga')
+                font_curiosity = str(Path(FONT_REGISTRY.get(font_curiosity_key, "fonts/Calistoga-Regular.ttf")).resolve())
+                
                 caption_main_emoji = form_data.get('caption_main_emoji', '')
                 caption_curiosity_emoji = form_data.get('caption_curiosity_emoji', '')
                 
@@ -136,13 +150,11 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     start_time = max(0.0, min(start_time, actual_dur))
                     end_time = max(start_time + 0.5, min(end_time, actual_dur))
                             
-                    font_path = str(Path("fonts/Calistoga-Regular.ttf").resolve())
-                    
                     if mode == "main":
                         cap = CaptionData(main_text=caption_main, curiosity_text="", emoji=caption_main_emoji, mode="main")
-                        fs = compute_best_font_size([cap], font_path, 936, 3)
+                        fs = compute_best_font_size([(cap, font_main)], 936, 3)
                         overlay_path = workspace / "overlay.png"
-                        generate_text_overlay(cap, font_path, fs, str(overlay_path))
+                        generate_text_overlay(cap, font_main, fs, str(overlay_path))
                         
                         render_main_video(
                             str(input_path), str(output_path), str(overlay_path),
@@ -159,12 +171,12 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                             
                         cap_hook = CaptionData(main_text=hook_black, curiosity_text=hook_red, emoji=caption_main_emoji)
                         cap_reveal = CaptionData(main_text=caption_curiosity, curiosity_text="", emoji=caption_curiosity_emoji)
-                        fs = compute_best_font_size([cap_hook, cap_reveal], font_path, 936, 3)
+                        fs = compute_best_font_size([(cap_hook, font_main), (cap_reveal, font_curiosity)], 936, 3)
                         
                         hook_overlay = workspace / "hook.png"
                         reveal_overlay = workspace / "reveal.png"
-                        generate_text_overlay(cap_hook, font_path, fs, str(hook_overlay))
-                        generate_text_overlay(cap_reveal, font_path, fs, str(reveal_overlay))
+                        generate_text_overlay(cap_hook, font_main, fs, str(hook_overlay))
+                        generate_text_overlay(cap_reveal, font_curiosity, fs, str(reveal_overlay))
                         
                         if cut_time is None:
                             cut_time = start_time + (end_time - start_time) / 2.0

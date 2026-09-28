@@ -331,6 +331,16 @@
                     <label>Main Caption</label>
                     <textarea id="caption-main" placeholder="E.g. Salman was doing it wrong, but then..."></textarea>
                 </div>
+                <div class="form-group">
+                    <label>Main Caption Font</label>
+                    <select id="font-main">
+                        <option value="Calistoga">Calistoga</option>
+                        <option value="Alike">Alike</option>
+                        <option value="Caslon OS">Caslon OS</option>
+                        <option value="Fira Mono">Fira Mono</option>
+                        <option value="Source Sans Pro">Source Sans Pro</option>
+                    </select>
+                </div>
                 
                 <div class="form-group">
                     <label><span>Main Caption Emoji</span> <span class="optional-tag">Optional</span></label>
@@ -342,6 +352,16 @@
                     <div class="form-group">
                         <label>Curiosity Caption</label>
                         <textarea id="caption-curiosity" placeholder="E.g. Arpita stepped in!"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Curiosity Caption Font</label>
+                        <select id="font-curiosity">
+                            <option value="Calistoga">Calistoga</option>
+                            <option value="Alike">Alike</option>
+                            <option value="Caslon OS">Caslon OS</option>
+                            <option value="Fira Mono">Fira Mono</option>
+                            <option value="Source Sans Pro">Source Sans Pro</option>
+                        </select>
                     </div>
                     
                     <div class="form-group">
@@ -661,8 +681,10 @@
             fd.append('crop_y', cropY);
             fd.append('crop_size', Math.round(currentCropSize));
             fd.append('caption_main', document.getElementById('caption-main').value);
+            fd.append('font_main', document.getElementById('font-main').value);
             fd.append('caption_main_emoji', document.getElementById('caption-emoji-main').value);
             fd.append('caption_curiosity', document.getElementById('caption-curiosity').value);
+            fd.append('font_curiosity', document.getElementById('font-curiosity').value);
             fd.append('caption_curiosity_emoji', document.getElementById('caption-emoji-curiosity').value);
             
             try {

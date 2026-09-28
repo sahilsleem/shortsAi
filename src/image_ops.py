@@ -19,7 +19,11 @@ def get_word_list(caption):
     words = []
     
     if caption.main_text:
-        for w in caption.main_text.split(" "):
+        text = caption.main_text.replace("\n", " \n ")
+        for w in text.split(" "):
+            if w == "\n":
+                words.append(("\n", None))
+                continue
             if w:
                 if getattr(caption, "mode", "") == "main":
                     clean_w = w.translate(str.maketrans('', '', string.punctuation))
@@ -29,19 +33,30 @@ def get_word_list(caption):
                 words.append((w, (0, 0, 0, 255)))
                 
     if caption.curiosity_text:
-        c_words = [w for w in caption.curiosity_text.split(" ") if w]
+        text = caption.curiosity_text.replace("\n", " \n ")
+        c_words = [w for w in text.split(" ") if w]
         if caption.emoji:
-            if c_words:
-                c_words[-1] += " " + caption.emoji
+            for i in range(len(c_words)-1, -1, -1):
+                if c_words[i] != "\n":
+                    c_words[i] += " " + caption.emoji
+                    break
             else:
                 c_words.append(caption.emoji)
+                
         for w in c_words:
+            if w == "\n":
+                words.append(("\n", None))
+                continue
             words.append((w, (255, 0, 0, 255)))
     else:
         if caption.emoji:
             if words:
                 last_w, color = words.pop()
-                words.append((last_w + " " + caption.emoji, color))
+                if last_w == "\n":
+                    words.append(("\n", None))
+                    words.append((caption.emoji, (0, 0, 0, 255)))
+                else:
+                    words.append((last_w + " " + caption.emoji, color))
             else:
                 words.append((caption.emoji, (0, 0, 0, 255)))
                 
@@ -59,6 +74,15 @@ def wrap_words(words, font, max_width, draw, pilmoji_context):
     space_w = get_text_width(" ", font, pilmoji_context, draw)
     
     for word, color in words:
+        if word == "\n":
+            if current_line:
+                lines.append(current_line)
+            else:
+                lines.append([(" ", (0,0,0,0))])
+            current_line = []
+            current_width = 0
+            continue
+            
         w_w = get_text_width(word, font, pilmoji_context, draw)
         
         if w_w > max_width:
@@ -81,7 +105,7 @@ def wrap_words(words, font, max_width, draw, pilmoji_context):
         
     return lines
 
-def compute_best_font_size(captions, font_path: str, max_width: int, max_lines: int) -> int:
+def compute_best_font_size(caption_font_pairs, max_width: int, max_lines: int) -> int:
     img = Image.new("RGBA", (10, 10))
     draw = ImageDraw.Draw(img)
     pilmoji_context = None
@@ -91,17 +115,16 @@ def compute_best_font_size(captions, font_path: str, max_width: int, max_lines: 
     MAX_FONT = 82
     MIN_FONT = 38
     
-    # Try fitting in 1 line, then 2 lines, then 3 lines...
     for target_lines in range(1, max_lines + 1):
         font_size = MAX_FONT
         while font_size >= MIN_FONT:
-            try:
-                font = ImageFont.truetype(font_path, font_size)
-            except IOError:
-                return 35
-                
             all_fit = True
-            for caption in captions:
+            for caption, font_path in caption_font_pairs:
+                try:
+                    font = ImageFont.truetype(font_path, font_size)
+                except IOError:
+                    return 35
+                    
                 words = get_word_list(caption)
                 if not words:
                     continue
@@ -114,7 +137,6 @@ def compute_best_font_size(captions, font_path: str, max_width: int, max_lines: 
                 return int(font_size * 0.8)
             font_size -= 2
             
-    # If we exhaust all loops (e.g. extremely long text), return MIN_FONT scaled down
     return int(MIN_FONT * 0.8)
 
 def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_width: int):
