@@ -136,13 +136,12 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
     if not words:
         return int(82 * 0.8)
 
-    # 1. Calistoga Reference Baseline
+    # 1. Calistoga Reference Layout
     CALISTOGA_PATH = str(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts", "Calistoga-Regular.ttf"))
     if not os.path.exists(CALISTOGA_PATH):
         CALISTOGA_PATH = "fonts/Calistoga-Regular.ttf"
 
     cal_fs = 82
-    cal_lines = None
     cal_font = None
     for target_lines in range(1, max_lines + 1):
         found = False
@@ -154,21 +153,19 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
             lines = wrap_words(words, font, max_width, draw, pilmoji_context)
             if lines is not None and len(lines) <= target_lines:
                 cal_fs = fs
-                cal_lines = lines
                 cal_font = font
                 found = True
                 break
         if found:
             break
             
-    if not cal_lines:
+    if cal_font is None:
         cal_fs = 38
         cal_font = ImageFont.truetype(CALISTOGA_PATH, 38)
-        cal_lines = wrap_words(words, cal_font, max_width, draw, pilmoji_context) or []
 
-    cal_w, cal_h = measure_footprint(cal_lines, cal_font, pilmoji_context, draw)
-    target_area = cal_w * cal_h
-    target_line_count = len(cal_lines) if cal_lines else 1
+    # Calculate Calistoga's visual glyph height
+    cal_bbox = draw.textbbox((0, 0), "AydY~.", font=cal_font)
+    target_h = cal_bbox[3] - cal_bbox[1]
 
     # If the requested font is Calistoga, just apply the 20% reduction and return
     if os.path.normpath(font_path) == os.path.normpath(CALISTOGA_PATH):
@@ -178,31 +175,25 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
     best_fs = 38
     best_diff = float('inf')
     
-    # Alternative fonts may need to scale up to ~150px to match Calistoga's massive x-height
-    for fs in range(150, 20, -1):
+    # Alternative fonts may need to scale up dramatically to match Calistoga's massive x-height
+    for fs in range(250, 20, -1):
         try:
             alt_font = ImageFont.truetype(font_path, fs)
         except IOError:
             continue
             
-        alt_lines = wrap_words(words, alt_font, max_width, draw, pilmoji_context)
-        if alt_lines is None:
-            continue
-            
-        # Strongly enforce matching line counts to mirror Calistoga's layout density
-        if len(alt_lines) > target_line_count:
-            continue
-            
-        alt_w, alt_h = measure_footprint(alt_lines, alt_font, pilmoji_context, draw)
-        alt_area = alt_w * alt_h
+        alt_bbox = draw.textbbox((0, 0), "AydY~.", font=alt_font)
+        alt_h = alt_bbox[3] - alt_bbox[1]
         
-        area_diff = abs(alt_area - target_area)
-        line_diff = abs(len(alt_lines) - target_line_count) * 1000000 # Penalize structural mismatches
-        total_diff = area_diff + line_diff
-        
-        if total_diff < best_diff:
-            best_diff = total_diff
-            best_fs = fs
+        diff = abs(alt_h - target_h)
+        if diff < best_diff:
+            # Ensure this visually matched size doesn't fail the max_width physical boundary
+            if wrap_words(words, alt_font, max_width, draw, pilmoji_context) is not None:
+                best_diff = diff
+                best_fs = fs
+                # If we hit an exact match, we can stop early
+                if diff == 0:
+                    break
 
     return int(best_fs * 0.8)
 
