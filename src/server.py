@@ -121,11 +121,11 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     "Source Sans Pro": "fonts/SourceSansPro-Regular.ttf"
                 }
 
-                caption_main = form_data.get('caption_main', '')
+                caption_main = form_data.get('caption_main', '').replace('\r\n', '\n').replace('\r', '\n')
                 font_main_key = form_data.get('font_main', 'Calistoga')
                 font_main = str(Path(FONT_REGISTRY.get(font_main_key, "fonts/Calistoga-Regular.ttf")).resolve())
                 
-                caption_curiosity = form_data.get('caption_curiosity', '')
+                caption_curiosity = form_data.get('caption_curiosity', '').replace('\r\n', '\n').replace('\r', '\n')
                 font_curiosity_key = form_data.get('font_curiosity', 'Calistoga')
                 font_curiosity = str(Path(FONT_REGISTRY.get(font_curiosity_key, "fonts/Calistoga-Regular.ttf")).resolve())
                 
@@ -163,10 +163,10 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     else:
                         if "," in caption_main:
                             split_idx = caption_main.index(",") + 1
-                            hook_black = caption_main[:split_idx].strip()
-                            hook_red = caption_main[split_idx:].strip()
+                            hook_black = caption_main[:split_idx].rstrip(' \t')
+                            hook_red = caption_main[split_idx:].lstrip(' \t')
                         else:
-                            hook_black = caption_main.strip()
+                            hook_black = caption_main.rstrip(' \t')
                             hook_red = ""
                             
                         cap_hook = CaptionData(main_text=hook_black, curiosity_text=hook_red, emoji=caption_main_emoji)

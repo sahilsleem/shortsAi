@@ -10,6 +10,23 @@ except ImportError:
     Pilmoji = None
     AppleEmojiSource = None
 
+def is_main_word_red(word: str) -> bool:
+    """
+    Returns True if the first alphabetic character of the word is uppercase.
+    Ignores leading punctuation, quotes, brackets, symbols, and emojis.
+    Returns False if there are no alphabetic characters, if the first alphabetic
+    character is lowercase, or if the word begins with a number (e.g. '123Salman').
+    """
+    i = 0
+    while i < len(word):
+        ch = word[i]
+        if ch.isdigit():
+            return False
+        if ch.isalpha():
+            return ch.isupper()
+        i += 1
+    return False
+
 def get_word_list(caption):
     """
     Returns a list of (word, color) tuples.
@@ -19,24 +36,25 @@ def get_word_list(caption):
     words = []
     
     if caption.main_text:
-        text = caption.main_text.replace("\n", " \n ")
+        text = caption.main_text.replace("\r\n", "\n").replace("\r", "\n")
+        text = text.replace("\n", " \n ")
         for w in text.split(" "):
             if w == "\n":
                 words.append(("\n", None))
                 continue
             if w:
                 if getattr(caption, "mode", "") == "main":
-                    clean_w = w.translate(str.maketrans('', '', string.punctuation))
-                    if clean_w and clean_w.isupper():
+                    if is_main_word_red(w):
                         words.append((w, (255, 0, 0, 255)))
                         continue
                 words.append((w, (0, 0, 0, 255)))
                 
     if caption.curiosity_text:
-        text = caption.curiosity_text.replace("\n", " \n ")
+        text = caption.curiosity_text.replace("\r\n", "\n").replace("\r", "\n")
+        text = text.replace("\n", " \n ")
         c_words = [w for w in text.split(" ") if w]
         if caption.emoji:
-            for i in range(len(c_words)-1, -1, -1):
+            for i in range(len(c_words) - 1, -1, -1):
                 if c_words[i] != "\n":
                     c_words[i] += " " + caption.emoji
                     break
@@ -51,12 +69,13 @@ def get_word_list(caption):
     else:
         if caption.emoji:
             if words:
-                last_w, color = words.pop()
-                if last_w == "\n":
-                    words.append(("\n", None))
-                    words.append((caption.emoji, (0, 0, 0, 255)))
+                for i in range(len(words) - 1, -1, -1):
+                    if words[i][0] != "\n":
+                        w, col = words[i]
+                        words[i] = (w + " " + caption.emoji, col)
+                        break
                 else:
-                    words.append((last_w + " " + caption.emoji, color))
+                    words.append((caption.emoji, (0, 0, 0, 255)))
             else:
                 words.append((caption.emoji, (0, 0, 0, 255)))
                 
@@ -163,6 +182,7 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
         CALISTOGA_PATH = "fonts/Calistoga-Regular.ttf"
 
     cal_base_size = 38
+    target_line_count = max_lines
     for target_lines in range(1, max_lines + 1):
         found = False
         for fs in range(82, 37, -2):
@@ -173,14 +193,25 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
             lines = wrap_words(words, font, max_width, draw, pilmoji_context)
             if lines is not None and len(lines) <= target_lines:
                 cal_base_size = fs
+                target_line_count = len(lines)
                 found = True
                 break
         if found:
             break
 
-    # Extract representative sample text from caption for geometry measurement
-    raw_text = caption.main_text if hasattr(caption, 'main_text') else str(caption)
-    sample_text = raw_text.strip() if raw_text.strip() else "AydY~."
+    # Extract clean representative line from caption for single-line glyph height measurement
+    raw_text = ""
+    if hasattr(caption, 'main_text') and caption.main_text:
+        raw_text += caption.main_text
+    if hasattr(caption, 'curiosity_text') and caption.curiosity_text:
+        raw_text += " " + caption.curiosity_text
+    if not raw_text:
+        raw_text = str(caption)
+
+    # Use clean text (no newlines, no emojis) for single-line glyph height measurement
+    clean_lines = [emoji.replace_emoji(l, "").strip() for l in raw_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
+    clean_lines = [l for l in clean_lines if l]
+    sample_text = max(clean_lines, key=len) if clean_lines else "AydY~."
 
     # Calistoga reference height at base size
     try:
@@ -196,27 +227,34 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
         alt_visible_h = cal_visible_h
     else:
         alt_base_size = calculate_visual_font_scale(CALISTOGA_PATH, font_path, cal_base_size, sample_text)
+        
+        # Verify alternative font fits within max_width and target_line_count if possible
+        for fs in range(alt_base_size, 19, -1):
+            try:
+                f_check = ImageFont.truetype(font_path, fs)
+            except IOError:
+                continue
+            w_res = wrap_words(words, f_check, max_width, draw, pilmoji_context)
+            if w_res is not None and len(w_res) <= target_line_count:
+                alt_base_size = fs
+                break
+        else:
+            # Fallback if it couldn't fit target_line_count down to 20: ensure at least individual words fit
+            for fs in range(alt_base_size, 19, -1):
+                try:
+                    f_check = ImageFont.truetype(font_path, fs)
+                except IOError:
+                    continue
+                if wrap_words(words, f_check, max_width, draw, pilmoji_context) is not None:
+                    alt_base_size = fs
+                    break
+
         try:
             alt_font = ImageFont.truetype(font_path, alt_base_size)
             alt_bbox = draw.textbbox((0, 0), sample_text, font=alt_font)
             alt_visible_h = alt_bbox[3] - alt_bbox[1]
         except IOError:
             alt_visible_h = 0
-
-        # Safety check: make sure single word does not exceed max_width
-        try:
-            f_check = ImageFont.truetype(font_path, alt_base_size)
-            if wrap_words(words, f_check, max_width, draw, pilmoji_context) is None:
-                for fs in range(alt_base_size - 1, 19, -1):
-                    try:
-                        f_sub = ImageFont.truetype(font_path, fs)
-                        if wrap_words(words, f_sub, max_width, draw, pilmoji_context) is not None:
-                            alt_base_size = fs
-                            break
-                    except IOError:
-                        continue
-        except IOError:
-            pass
 
     # Restored historical scale (no 0.8 reduction)
     final_font_size = alt_base_size

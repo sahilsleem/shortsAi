@@ -23,22 +23,28 @@ def test_caption_wrap():
         curiosity_text="But then... 😅"
     )
     
-    best_font_size = compute_best_font_size(
-        captions=[long_caption, short_caption],
+    fs_long = compute_best_font_size(
+        caption=long_caption,
         font_path=font_path,
-        max_width=880,
-        max_lines=2
+        max_width=936,
+        max_lines=3
     )
-    
-    print(f"Computed shared font size: {best_font_size}")
+    print(f"Computed font size for long caption: {fs_long}")
     
     output_1 = str(Path("working/test_caption_long.png").resolve())
-    generate_text_overlay(long_caption, font_path, best_font_size, output_1)
-    
+    generate_text_overlay(long_caption, font_path, fs_long, output_1)
     print(f"Generated test image for long caption at: {output_1}")
     
+    fs_short = compute_best_font_size(
+        caption=short_caption,
+        font_path=font_path,
+        max_width=936,
+        max_lines=3
+    )
+    print(f"Computed font size for short caption: {fs_short}")
+    
     output_2 = str(Path("working/test_caption_short.png").resolve())
-    generate_text_overlay(short_caption, font_path, best_font_size, output_2)
+    generate_text_overlay(short_caption, font_path, fs_short, output_2)
     print(f"Generated test image for short caption at: {output_2}")
 
 if __name__ == "__main__":
