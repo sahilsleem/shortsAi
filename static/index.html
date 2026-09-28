@@ -352,6 +352,32 @@
                 </div>
             </div>
 
+            <div class="section-label">✨ Gemini Caption Writer</div>
+            <div class="card" style="border: 1px solid #c7d2fe; background: linear-gradient(180deg, #f5f3ff 0%, #ffffff 100%);">
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label style="font-size: 13px; font-weight: 600; color: #4338ca;">What's happening in this video?</label>
+                    <textarea id="gemini-context" placeholder="E.g. Salman Khan was walking down the street, then he spotted his friend and shook his hand" style="min-height: 70px;"></textarea>
+                </div>
+                
+                <button type="button" class="btn" id="btn-gemini-generate" style="background: #4f46e5; padding: 12px; font-size: 14px;">✨ Generate</button>
+                <div id="gemini-error" style="display: none; color: #dc2626; font-size: 13px; font-weight: 500; margin-top: 10px; line-height: 1.4;"></div>
+                
+                <div id="gemini-result-card" style="display: none; margin-top: 16px; padding: 14px; background: #ffffff; border: 1px solid #e0e7ff; border-radius: 12px; box-shadow: var(--shadow-sm);">
+                    <div style="margin-bottom: 10px;">
+                        <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Main Caption</div>
+                        <div id="gemini-preview-main" style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-top: 3px; line-height: 1.4;"></div>
+                    </div>
+                    <div style="margin-bottom: 14px;">
+                        <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Curiosity Caption</div>
+                        <div id="gemini-preview-curiosity" style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-top: 3px; line-height: 1.4;"></div>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button type="button" class="toggle-btn" id="btn-gemini-retry" style="flex: 1; padding: 10px; background: #e2e8f0; color: var(--text-main); font-weight: 600; font-size: 14px; border-radius: 8px;">↻ Retry</button>
+                        <button type="button" class="toggle-btn" id="btn-gemini-use" style="flex: 1; padding: 10px; background: #0d9488; color: #ffffff; font-weight: 600; font-size: 14px; border-radius: 8px;">✓ Use</button>
+                    </div>
+                </div>
+            </div>
+
             <div class="section-label">Captions</div>
             <div class="card">
                 <div class="form-group">
@@ -485,6 +511,90 @@
                 audioMode = btn.dataset.val;
             };
         });
+
+        // Gemini Caption Writer Logic
+        const geminiContext = document.getElementById('gemini-context');
+        const btnGeminiGenerate = document.getElementById('btn-gemini-generate');
+        const geminiError = document.getElementById('gemini-error');
+        const geminiResultCard = document.getElementById('gemini-result-card');
+        const geminiPreviewMain = document.getElementById('gemini-preview-main');
+        const geminiPreviewCuriosity = document.getElementById('gemini-preview-curiosity');
+        const btnGeminiRetry = document.getElementById('btn-gemini-retry');
+        const btnGeminiUse = document.getElementById('btn-gemini-use');
+
+        let recentGenerations = [];
+        let currentGeneratedPair = null;
+
+        async function requestGeminiCaptions() {
+            const contextText = geminiContext.value.trim();
+            if (!contextText) {
+                geminiError.innerText = "Please describe what is happening in the video first.";
+                geminiError.style.display = "block";
+                return;
+            }
+
+            btnGeminiGenerate.disabled = true;
+            btnGeminiRetry.disabled = true;
+            btnGeminiGenerate.innerText = "✨ Generating...";
+            geminiError.style.display = "none";
+            geminiError.innerText = "";
+
+            try {
+                const res = await fetch('/api/generate_captions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        context: contextText,
+                        previous_generations: recentGenerations
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || "Failed to generate captions");
+                }
+
+                currentGeneratedPair = data;
+                recentGenerations.push({
+                    main_caption: data.main_caption,
+                    curiosity_caption: data.curiosity_caption
+                });
+
+                geminiPreviewMain.innerText = data.main_caption;
+                geminiPreviewCuriosity.innerText = data.curiosity_caption;
+                geminiResultCard.style.display = "block";
+            } catch (err) {
+                geminiError.innerText = err.message || "Error generating captions.";
+                geminiError.style.display = "block";
+            } finally {
+                btnGeminiGenerate.disabled = false;
+                btnGeminiRetry.disabled = false;
+                btnGeminiGenerate.innerText = "✨ Generate";
+            }
+        }
+
+        btnGeminiGenerate.onclick = requestGeminiCaptions;
+        btnGeminiRetry.onclick = requestGeminiCaptions;
+
+        btnGeminiUse.onclick = () => {
+            if (!currentGeneratedPair) return;
+            const captionMainInput = document.getElementById('caption-main');
+            const captionCuriosityInput = document.getElementById('caption-curiosity');
+            
+            captionMainInput.value = currentGeneratedPair.main_caption;
+            captionCuriosityInput.value = currentGeneratedPair.curiosity_caption;
+
+            captionMainInput.dispatchEvent(new Event('input', { bubbles: true }));
+            captionCuriosityInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+            const origText = btnGeminiUse.innerText;
+            btnGeminiUse.innerText = "✓ Applied!";
+            setTimeout(() => {
+                btnGeminiUse.innerText = origText;
+            }, 1500);
+
+            captionMainInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        };
 
         uploadArea.onclick = () => fileInput.click();
 

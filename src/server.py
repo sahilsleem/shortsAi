@@ -13,6 +13,7 @@ from email import message_from_bytes
 from src.config import CaptionData
 from src.image_ops import generate_text_overlay, compute_best_font_size
 from src.video_ops import render_main_video, render_curiosity_video, get_ffprobe_path
+from src.gemini_caption import generate_captions, GeminiError, GeminiConfigError, GeminiQuotaError, GeminiAPIError
 
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024
 
@@ -217,6 +218,53 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     
             except Exception as e:
                 self.send_error(500, f"Server error: {str(e)}")
+        elif self.path in ('/api/generate_captions', '/generate_captions'):
+            try:
+                content_length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(content_length)
+                try:
+                    data = json.loads(body.decode('utf-8'))
+                except Exception:
+                    self.send_response(400)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Invalid JSON payload"}).encode('utf-8'))
+                    return
+                
+                context = data.get('context', '')
+                previous_generations = data.get('previous_generations', [])
+                
+                try:
+                    captions = generate_captions(context=context, previous_generations=previous_generations)
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(captions).encode('utf-8'))
+                except GeminiConfigError as e:
+                    self.send_response(400)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+                except GeminiQuotaError as e:
+                    self.send_response(429)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+                except (GeminiAPIError, ValueError) as e:
+                    self.send_response(400)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": f"Failed to generate captions: {str(e)}"}).encode('utf-8'))
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"Server error: {str(e)}"}).encode('utf-8'))
         else:
             self.send_error(404, 'File Not Found')
 
