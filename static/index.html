@@ -65,6 +65,33 @@
             box-shadow: var(--shadow-sm); 
         }
 
+        .toggle-group { 
+            display: flex; 
+            background: #e2e8f0; 
+            padding: 4px; 
+            border-radius: 12px; 
+            gap: 4px;
+        }
+        .toggle-btn { 
+            flex: 1; 
+            text-align: center; 
+            padding: 10px 8px; 
+            font-size: 13px; 
+            font-weight: 600; 
+            color: var(--text-sub); 
+            cursor: pointer; 
+            background: transparent; 
+            border: none; 
+            border-radius: 8px; 
+            transition: all 0.2s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .toggle-btn.active { 
+            background: var(--card-bg); 
+            color: var(--accent); 
+            box-shadow: var(--shadow-sm); 
+        }
+
         .upload-area { 
             background: var(--card-bg);
             border: 2px dashed #cbd5e1; 
@@ -371,6 +398,26 @@
                 </div>
             </div>
             
+            <div class="section-label">Enhance Video & Audio</div>
+            <div class="card">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Enhance Video & Audio</label>
+                    <div class="toggle-group" id="enhance-toggle">
+                        <button type="button" class="toggle-btn active" data-val="off">OFF</button>
+                        <button type="button" class="toggle-btn" data-val="on">ON</button>
+                    </div>
+                </div>
+                
+                <div id="audio-mode-group" style="display: none; margin-top: 16px;">
+                    <label style="display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Audio</label>
+                    <div class="toggle-group" id="audio-mode-toggle">
+                        <button type="button" class="toggle-btn" data-val="original">Original Mix</button>
+                        <button type="button" class="toggle-btn active" data-val="enhanced">Enhanced Mix</button>
+                        <button type="button" class="toggle-btn" data-val="voice_focus">Voice Focus</button>
+                    </div>
+                </div>
+            </div>
+            
             <button class="btn" id="btn-generate">Render Video</button>
             <div id="status-message" style="margin-top:12px; text-align:center; min-height: 20px;"></div>
         </div>
@@ -414,6 +461,30 @@
             document.getElementById('curiosity-fields').style.display = 'none';
             document.getElementById('cut-slider-row').style.display = 'none';
         };
+
+        let enhanceEnabled = false;
+        let audioMode = 'enhanced';
+
+        const enhanceToggle = document.getElementById('enhance-toggle');
+        const audioModeGroup = document.getElementById('audio-mode-group');
+        const audioModeToggle = document.getElementById('audio-mode-toggle');
+
+        enhanceToggle.querySelectorAll('.toggle-btn').forEach(btn => {
+            btn.onclick = () => {
+                enhanceToggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                enhanceEnabled = (btn.dataset.val === 'on');
+                audioModeGroup.style.display = enhanceEnabled ? 'block' : 'none';
+            };
+        });
+
+        audioModeToggle.querySelectorAll('.toggle-btn').forEach(btn => {
+            btn.onclick = () => {
+                audioModeToggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                audioMode = btn.dataset.val;
+            };
+        });
 
         uploadArea.onclick = () => fileInput.click();
 
@@ -686,6 +757,8 @@
             fd.append('caption_curiosity', document.getElementById('caption-curiosity').value);
             fd.append('font_curiosity', document.getElementById('font-curiosity').value);
             fd.append('caption_curiosity_emoji', document.getElementById('caption-emoji-curiosity').value);
+            fd.append('enhance', enhanceEnabled ? 'true' : 'false');
+            fd.append('audio_mode', audioMode);
             
             try {
                 const res = await fetch('/render', { method: 'POST', body: fd });

@@ -132,6 +132,12 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                 caption_main_emoji = form_data.get('caption_main_emoji', '')
                 caption_curiosity_emoji = form_data.get('caption_curiosity_emoji', '')
                 
+                enhance_str = form_data.get('enhance', 'false').lower()
+                enhance = enhance_str in ('true', '1', 'yes', 'on')
+                audio_mode = form_data.get('audio_mode', 'enhanced' if enhance else 'original').lower()
+                if audio_mode not in ('original', 'enhanced', 'voice_focus'):
+                    audio_mode = 'enhanced' if enhance else 'original'
+                
                 req_id = str(uuid.uuid4())
                 workspace = Path(f"working/{req_id}").resolve()
                 os.makedirs(workspace, exist_ok=True)
@@ -158,7 +164,8 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                         
                         render_main_video(
                             str(input_path), str(output_path), str(overlay_path),
-                            start_time, end_time, crop_x, crop_y, crop_size
+                            start_time, end_time, crop_x, crop_y, crop_size,
+                            enhance=enhance, audio_mode=audio_mode
                         )
                     else:
                         if "," in caption_main:
@@ -187,7 +194,8 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                         
                         render_curiosity_video(
                             str(input_path), str(output_path), str(hook_overlay), str(reveal_overlay),
-                            start_time, cut_time, end_time, crop_x, crop_y, crop_size
+                            start_time, cut_time, end_time, crop_x, crop_y, crop_size,
+                            enhance=enhance, audio_mode=audio_mode
                         )
                         
                     if os.path.exists(output_path):
