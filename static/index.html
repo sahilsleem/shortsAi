@@ -291,7 +291,7 @@
                 </div>
                 
                 <div id="preview-container">
-                    <video id="video-element" playsinline muted></video>
+                    <video id="video-element" playsinline></video>
                     <div id="crop-box"></div>
                 </div>
                 
@@ -472,6 +472,43 @@
             };
         };
         
+        let isSeeking = false;
+        let pendingSeek = null;
+        let seekTimer = null;
+        
+        function completeSeek() {
+            clearTimeout(seekTimer);
+            isSeeking = false;
+            
+            if (pendingSeek !== null) {
+                const t = pendingSeek;
+                pendingSeek = null;
+                
+                if (Math.abs(videoElement.currentTime - t) < 0.01) {
+                    return;
+                }
+                
+                isSeeking = true;
+                videoElement.currentTime = t;
+                seekTimer = setTimeout(completeSeek, 250);
+            }
+        }
+        
+        videoElement.addEventListener('seeked', completeSeek);
+        
+        function requestSeek(time) {
+            if (Math.abs(videoElement.currentTime - time) < 0.01) {
+                return;
+            }
+            if (!isSeeking) {
+                isSeeking = true;
+                videoElement.currentTime = time;
+                seekTimer = setTimeout(completeSeek, 250);
+            } else {
+                pendingSeek = time;
+            }
+        }
+        
         startSlider.oninput = () => {
             let s = parseFloat(startSlider.value);
             let c = parseFloat(cutSlider.value);
@@ -484,7 +521,7 @@
                 startSlider.value = s;
             }
             startVal.innerText = formatTime(s);
-            videoElement.currentTime = s;
+            requestSeek(s);
         };
         
         cutSlider.oninput = () => {
@@ -500,7 +537,7 @@
                 cutSlider.value = c;
             }
             cutVal.innerText = formatTime(c);
-            videoElement.currentTime = c;
+            requestSeek(c);
         };
         
         endSlider.oninput = () => {
@@ -515,7 +552,7 @@
                 endSlider.value = e;
             }
             endVal.innerText = formatTime(e);
-            videoElement.currentTime = e;
+            requestSeek(e);
         };
         
         playBtn.onclick = () => {
