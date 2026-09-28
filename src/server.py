@@ -152,7 +152,7 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                             
                     if mode == "main":
                         cap = CaptionData(main_text=caption_main, curiosity_text="", emoji=caption_main_emoji, mode="main")
-                        fs = compute_best_font_size([(cap, font_main)], 936, 3)
+                        fs = compute_best_font_size(cap, font_main, 936, 3)
                         overlay_path = workspace / "overlay.png"
                         generate_text_overlay(cap, font_main, fs, str(overlay_path))
                         
@@ -171,12 +171,14 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                             
                         cap_hook = CaptionData(main_text=hook_black, curiosity_text=hook_red, emoji=caption_main_emoji)
                         cap_reveal = CaptionData(main_text=caption_curiosity, curiosity_text="", emoji=caption_curiosity_emoji)
-                        fs = compute_best_font_size([(cap_hook, font_main), (cap_reveal, font_curiosity)], 936, 3)
+                        
+                        fs_hook = compute_best_font_size(cap_hook, font_main, 936, 3)
+                        fs_reveal = compute_best_font_size(cap_reveal, font_curiosity, 936, 3)
                         
                         hook_overlay = workspace / "hook.png"
                         reveal_overlay = workspace / "reveal.png"
-                        generate_text_overlay(cap_hook, font_main, fs, str(hook_overlay))
-                        generate_text_overlay(cap_reveal, font_curiosity, fs, str(reveal_overlay))
+                        generate_text_overlay(cap_hook, font_main, fs_hook, str(hook_overlay))
+                        generate_text_overlay(cap_reveal, font_curiosity, fs_reveal, str(reveal_overlay))
                         
                         if cut_time is None:
                             cut_time = start_time + (end_time - start_time) / 2.0

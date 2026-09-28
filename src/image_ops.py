@@ -105,37 +105,46 @@ def wrap_words(words, font, max_width, draw, pilmoji_context):
         
     return lines
 
-def compute_best_font_size(caption_font_pairs, max_width: int, max_lines: int) -> int:
+def get_font_scale(font_path: str) -> float:
+    name = font_path.lower()
+    if "caslon" in name:
+        return 1.3
+    if "alike" in name:
+        return 1.25
+    if "sourcesanspro" in name:
+        return 1.2
+    if "firamono" in name:
+        return 1.15
+    return 1.0
+
+def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: int) -> int:
     img = Image.new("RGBA", (10, 10))
     draw = ImageDraw.Draw(img)
     pilmoji_context = None
     if Pilmoji:
         pilmoji_context = Pilmoji(img, source=AppleEmojiSource)
         
-    MAX_FONT = 82
-    MIN_FONT = 38
+    scale = get_font_scale(font_path)
+    MAX_FONT = int(82 * scale)
+    MIN_FONT = int(38 * scale)
     
     for target_lines in range(1, max_lines + 1):
         font_size = MAX_FONT
         while font_size >= MIN_FONT:
-            all_fit = True
-            for caption, font_path in caption_font_pairs:
-                try:
-                    font = ImageFont.truetype(font_path, font_size)
-                except IOError:
-                    return 35
-                    
-                words = get_word_list(caption)
-                if not words:
-                    continue
-                lines = wrap_words(words, font, max_width, draw, pilmoji_context)
-                if lines is None or len(lines) > target_lines:
-                    all_fit = False
-                    break
-                    
-            if all_fit:
+            try:
+                font = ImageFont.truetype(font_path, font_size)
+            except IOError:
+                return int(35 * scale * 0.8)
+                
+            words = get_word_list(caption)
+            if not words:
                 return int(font_size * 0.8)
-            font_size -= 2
+                
+            lines = wrap_words(words, font, max_width, draw, pilmoji_context)
+            if lines is not None and len(lines) <= target_lines:
+                return int(font_size * 0.8)
+                
+            font_size -= max(1, int(2 * scale))
             
     return int(MIN_FONT * 0.8)
 
