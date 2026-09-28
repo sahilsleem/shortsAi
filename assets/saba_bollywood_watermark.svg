@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 234 20" width="234" height="20">
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="1" dy="1" stdDeviation="0.5" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <style>
+    .wm-sb { font-family: 'Source Sans Pro', sans-serif; font-size: 19px; font-weight: 700; fill: rgba(255, 255, 255, 0.54); }
+    .wm-div { stroke: rgba(255, 255, 255, 0.54); stroke-width: 1.5; }
+    .wm-text { font-family: 'Source Sans Pro', sans-serif; font-size: 11.5px; font-weight: 600; letter-spacing: 2.2px; fill: rgba(255, 255, 255, 0.54); }
+  </style>
+  <g filter="url(#shadow)">
+    <text x="2" y="16" class="wm-sb">SB</text>
+    <line x1="34" y1="3" x2="34" y2="17" class="wm-div" />
+    <text x="46" y="15" class="wm-text">S A B A   B O L L Y W O O D</text>
+  </g>
+</svg>

@@ -31,6 +31,8 @@ def get_video_dimensions(video_path: str):
             return int(stream["width"]), int(stream["height"])
     return 1080, 1920
 
+DEFAULT_WATERMARK_PATH = str(Path(__file__).resolve().parent.parent / "assets" / "saba_bollywood_watermark.png")
+
 def render_main_video(
     source_video: str,
     output_video: str,
@@ -39,20 +41,31 @@ def render_main_video(
     end_time: float,
     crop_x: int,
     crop_y: int,
-    crop_size: int
+    crop_size: int,
+    watermark_path: str = None
 ):
+    if watermark_path is None:
+        watermark_path = DEFAULT_WATERMARK_PATH
+    has_wm = bool(watermark_path and os.path.exists(watermark_path))
+
     duration = end_time - start_time
     video_filters = "eq=contrast=1.03:brightness=0.01:saturation=1.08:gamma=1.02,unsharp=3:3:0.3:3:3:0.0"
     
     cmd = [get_ffmpeg_path(), "-y"]
     cmd.extend(["-ss", str(start_time), "-t", str(duration), "-i", source_video])
     cmd.extend(["-i", caption_overlay])
+    if has_wm:
+        cmd.extend(["-i", watermark_path])
     
     fc = []
     fc.append(f"[0:v]crop={crop_size}:{crop_size}:{crop_x}:{crop_y},scale=1002:1002,{video_filters}[v_proc];")
     fc.append(f"color=c=white:s=1080x1920:d={duration}:r=30[base];")
     fc.append(f"[base][v_proc]overlay=39:420:eof_action=pass[bg];")
-    fc.append(f"[bg][1:v]overlay=0:0[outv]")
+    if has_wm:
+        fc.append(f"[bg][1:v]overlay=0:0[with_cap];")
+        fc.append(f"[with_cap][2:v]overlay=x=(W-w)/2:y=1374-h:eof_action=repeat[outv]")
+    else:
+        fc.append(f"[bg][1:v]overlay=0:0[outv]")
     
     cmd.extend([
         "-filter_complex", "".join(fc),
@@ -75,8 +88,13 @@ def render_curiosity_video(
     crop_x: int,
     crop_y: int,
     crop_size: int,
-    transition_dur: float = 0.15
+    transition_dur: float = 0.15,
+    watermark_path: str = None
 ):
+    if watermark_path is None:
+        watermark_path = DEFAULT_WATERMARK_PATH
+    has_wm = bool(watermark_path and os.path.exists(watermark_path))
+
     hook_dur = cut_time - start_time
     rev_dur = end_time - cut_time
     hook_start = start_time
@@ -94,6 +112,10 @@ def render_curiosity_video(
     # We must explicitly read the audio streams starting at hook_start and reveal_start to avoid sync issues with concat
     cmd.extend(["-ss", str(hook_start), "-t", str(hook_dur), "-i", source_video])
     cmd.extend(["-ss", str(reveal_start), "-t", str(rev_dur), "-i", source_video])
+    
+    if has_wm:
+        cmd.extend(["-i", watermark_path])
+        wm_idx = 6
     
     fc = []
     
@@ -113,7 +135,11 @@ def render_curiosity_video(
     fc.append(f"[rev_bg2]fade=t=in:st=0:d={transition_dur}:c=black[rev_v_final];")
     fc.append(f"[5:a]afade=t=in:st=0:d={transition_dur}[rev_a_final];")
     
-    fc.append(f"[hook_v_final][hook_a_final][rev_v_final][rev_a_final]concat=n=2:v=1:a=1[outv][outa]")
+    if has_wm:
+        fc.append(f"[hook_v_final][hook_a_final][rev_v_final][rev_a_final]concat=n=2:v=1:a=1[v_concat][outa];")
+        fc.append(f"[v_concat][{wm_idx}:v]overlay=x=(W-w)/2:y=1374-h:eof_action=repeat[outv]")
+    else:
+        fc.append(f"[hook_v_final][hook_a_final][rev_v_final][rev_a_final]concat=n=2:v=1:a=1[outv][outa]")
     
     cmd.extend([
         "-filter_complex", "".join(fc),
