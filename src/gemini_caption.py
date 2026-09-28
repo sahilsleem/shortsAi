@@ -20,7 +20,7 @@ class GeminiAPIError(GeminiError):
     """Raised when Gemini API request fails or returns an unexpected response."""
     pass
 
-DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 SYSTEM_INSTRUCTION = """You are the expert caption writer for Saba Bollywood YouTube Shorts.
 Transform the creator's rough video description into a polished pair of high-impact captions:

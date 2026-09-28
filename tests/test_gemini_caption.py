@@ -13,6 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 
 from src.gemini_caption import (
+    DEFAULT_GEMINI_MODEL,
     generate_captions,
     parse_gemini_response,
     build_gemini_payload,
@@ -23,6 +24,45 @@ from src.gemini_caption import (
     GeminiAPIError,
 )
 from src.server import ShortsAIHandler
+
+def test_model_configuration_and_url(monkeypatch):
+    """Verify default model is gemini-3.8-flash, GEMINI_MODEL overrides it, and endpoint URL is properly constructed."""
+    assert DEFAULT_GEMINI_MODEL == "gemini-3.8-flash"
+
+    captured_urls = []
+    class MockResponse:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self):
+            return json.dumps({
+                "candidates": [{"content": {"parts": [{"text": '{"main_caption": "A, B", "curiosity_caption": "C"}'}]}}]
+            }).encode("utf-8")
+
+    def mock_urlopen(req, timeout=15):
+        captured_urls.append(req.full_url)
+        return MockResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+    # 1. Default model
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    generate_captions(context="Test context", api_key="test_key_1")
+    assert len(captured_urls) == 1
+    assert "models/gemini-3.8-flash:generateContent" in captured_urls[0]
+    assert "key=test_key_1" in captured_urls[0]
+
+    # 2. GEMINI_MODEL environment variable override
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-custom-flash")
+    generate_captions(context="Test context", api_key="test_key_2")
+    assert len(captured_urls) == 2
+    assert "models/gemini-custom-flash:generateContent" in captured_urls[1]
+    assert "key=test_key_2" in captured_urls[1]
+
+    # 3. Explicit model argument override
+    generate_captions(context="Test context", api_key="test_key_3", model="gemini-explicit-model")
+    assert len(captured_urls) == 3
+    assert "models/gemini-explicit-model:generateContent" in captured_urls[2]
+    assert "key=test_key_3" in captured_urls[2]
 
 def test_missing_api_key_handling(monkeypatch):
     """Calling generate_captions without GEMINI_API_KEY raises GeminiConfigError without crashing."""
