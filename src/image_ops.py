@@ -105,6 +105,47 @@ def wrap_words(words, font, max_width, draw, pilmoji_context):
         
     return lines
 
+def calculate_visual_font_scale(reference_font_path: str, alternative_font_path: str, reference_size: int, sample_text: str = "AydY~.") -> int:
+    """
+    Measures actual glyph geometry using Pillow.
+    Calculates the alternative font size required to match the reference font's
+    visible glyph bounding-box height at reference_size.
+    """
+    img = Image.new("RGBA", (10, 10))
+    draw = ImageDraw.Draw(img)
+    
+    try:
+        ref_font = ImageFont.truetype(reference_font_path, reference_size)
+    except IOError:
+        return reference_size
+        
+    ref_bbox = draw.textbbox((0, 0), sample_text, font=ref_font)
+    target_h = ref_bbox[3] - ref_bbox[1]
+    if target_h <= 0:
+        return reference_size
+        
+    best_fs = reference_size
+    best_diff = float('inf')
+    
+    min_search = max(10, int(reference_size * 0.5))
+    max_search = min(200, int(reference_size * 2.0))
+    
+    for fs in range(max_search, min_search - 1, -1):
+        try:
+            alt_font = ImageFont.truetype(alternative_font_path, fs)
+        except IOError:
+            continue
+        bbox = draw.textbbox((0, 0), sample_text, font=alt_font)
+        h = bbox[3] - bbox[1]
+        diff = abs(h - target_h)
+        if diff < best_diff:
+            best_diff = diff
+            best_fs = fs
+            if diff == 0:
+                break
+                
+    return best_fs
+
 def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: int) -> int:
     img = Image.new("RGBA", (10, 10))
     draw = ImageDraw.Draw(img)
@@ -116,13 +157,12 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
     if not words:
         return int(82 * 0.8)
 
-    # Step 1: Find Calistoga's proven base size for this caption.
-    # This is the existing working algorithm that produces correct visual results.
+    # 1. Calistoga Reference Baseline
     CALISTOGA_PATH = str(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts", "Calistoga-Regular.ttf"))
     if not os.path.exists(CALISTOGA_PATH):
         CALISTOGA_PATH = "fonts/Calistoga-Regular.ttf"
 
-    cal_base_size = 38  # fallback
+    cal_base_size = 38
     for target_lines in range(1, max_lines + 1):
         found = False
         for fs in range(82, 37, -2):
@@ -138,31 +178,69 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
         if found:
             break
 
-    # Step 2: Use that exact same point size as the starting size for the selected font.
-    # Do NOT shrink it. Do NOT try to match line counts or glyph metrics.
-    base_size = cal_base_size
+    # Extract representative sample text from caption for geometry measurement
+    raw_text = caption.main_text if hasattr(caption, 'main_text') else str(caption)
+    sample_text = raw_text.strip() if raw_text.strip() else "AydY~."
 
-    # Step 3: Only reduce if the selected font physically cannot fit
-    # (i.e. a single word exceeds 936px at this size).
+    # Calistoga reference height at base size
     try:
-        alt_font = ImageFont.truetype(font_path, base_size)
+        cal_font = ImageFont.truetype(CALISTOGA_PATH, cal_base_size)
+        cal_bbox = draw.textbbox((0, 0), sample_text, font=cal_font)
+        cal_visible_h = cal_bbox[3] - cal_bbox[1]
     except IOError:
-        return int(base_size * 0.8)
+        cal_visible_h = 0
 
-    result = wrap_words(words, alt_font, max_width, draw, pilmoji_context)
-    if result is None:
-        # A word is too wide at this size — shrink until it fits
-        for fs in range(base_size - 1, 19, -1):
-            try:
-                alt_font = ImageFont.truetype(font_path, fs)
-            except IOError:
-                continue
-            if wrap_words(words, alt_font, max_width, draw, pilmoji_context) is not None:
-                base_size = fs
-                break
+    # 2. Alternative Font Scaling based on visual glyph height
+    if os.path.normpath(font_path) == os.path.normpath(CALISTOGA_PATH):
+        alt_base_size = cal_base_size
+        alt_visible_h = cal_visible_h
+    else:
+        alt_base_size = calculate_visual_font_scale(CALISTOGA_PATH, font_path, cal_base_size, sample_text)
+        try:
+            alt_font = ImageFont.truetype(font_path, alt_base_size)
+            alt_bbox = draw.textbbox((0, 0), sample_text, font=alt_font)
+            alt_visible_h = alt_bbox[3] - alt_bbox[1]
+        except IOError:
+            alt_visible_h = 0
 
-    # Step 4: Apply the existing 20% reduction exactly once
-    return int(base_size * 0.8)
+        # Safety check: make sure single word does not exceed max_width
+        try:
+            f_check = ImageFont.truetype(font_path, alt_base_size)
+            if wrap_words(words, f_check, max_width, draw, pilmoji_context) is None:
+                for fs in range(alt_base_size - 1, 19, -1):
+                    try:
+                        f_sub = ImageFont.truetype(font_path, fs)
+                        if wrap_words(words, f_sub, max_width, draw, pilmoji_context) is not None:
+                            alt_base_size = fs
+                            break
+                    except IOError:
+                        continue
+        except IOError:
+            pass
+
+    # 3. Apply 20% reduction exactly once
+    final_font_size = int(alt_base_size * 0.8)
+
+    # Count final lines for diagnostic logging
+    try:
+        final_font = ImageFont.truetype(font_path, final_font_size)
+        final_lines = wrap_words(words, final_font, max_width, draw, pilmoji_context) or []
+        line_count = len(final_lines)
+    except IOError:
+        line_count = 0
+
+    # Production Diagnostic Logging
+    selected_font = os.path.basename(font_path)
+    print(f"[DIAGNOSTIC] selected_font: {selected_font}")
+    print(f"[DIAGNOSTIC] font_path: {font_path}")
+    print(f"[DIAGNOSTIC] calistoga_reference_size: {cal_base_size}")
+    print(f"[DIAGNOSTIC] calistoga_visible_height: {cal_visible_h}")
+    print(f"[DIAGNOSTIC] alternative_font_size: {alt_base_size}")
+    print(f"[DIAGNOSTIC] alternative_visible_height: {alt_visible_h}")
+    print(f"[DIAGNOSTIC] final_font_size: {final_font_size}")
+    print(f"[DIAGNOSTIC] line_count: {line_count}")
+
+    return final_font_size
 
 def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_width: int):
     draw = ImageDraw.Draw(img)
@@ -174,10 +252,14 @@ def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_
     if not words:
         return
         
+    CALISTOGA_PATH = str(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts", "Calistoga-Regular.ttf"))
     try:
         best_font = ImageFont.truetype(font_path, font_size)
     except IOError:
-        best_font = ImageFont.load_default()
+        try:
+            best_font = ImageFont.truetype(CALISTOGA_PATH, font_size)
+        except IOError:
+            best_font = ImageFont.load_default()
         
     best_lines = wrap_words(words, best_font, max_width, draw, pilmoji_context) or []
         
