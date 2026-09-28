@@ -49,9 +49,9 @@ def render_main_video(
     cmd.extend(["-i", caption_overlay])
     
     fc = []
-    fc.append(f"[0:v]crop={crop_size}:{crop_size}:{crop_x}:{crop_y},scale=1008:1008,{video_filters}[v_proc];")
+    fc.append(f"[0:v]crop={crop_size}:{crop_size}:{crop_x}:{crop_y},scale=1002:1002,{video_filters}[v_proc];")
     fc.append(f"color=c=white:s=1080x1920:d={duration}:r=30[base];")
-    fc.append(f"[base][v_proc]overlay=36:420:eof_action=pass[bg];")
+    fc.append(f"[base][v_proc]overlay=39:420:eof_action=pass[bg];")
     fc.append(f"[bg][1:v]overlay=0:0[outv]")
     
     cmd.extend([
@@ -98,17 +98,17 @@ def render_curiosity_video(
     fc = []
     
     # Hook segment
-    fc.append(f"[0:v]crop={crop_size}:{crop_size}:{crop_x}:{crop_y},scale=1008:1008,{video_filters}[hook_v_proc];")
+    fc.append(f"[0:v]crop={crop_size}:{crop_size}:{crop_x}:{crop_y},scale=1002:1002,{video_filters}[hook_v_proc];")
     fc.append(f"color=c=white:s=1080x1920:d={hook_dur}:r=30[hook_base];")
-    fc.append(f"[hook_base][hook_v_proc]overlay=36:420:eof_action=pass[hook_bg1];")
+    fc.append(f"[hook_base][hook_v_proc]overlay=39:420:eof_action=pass[hook_bg1];")
     fc.append(f"[hook_bg1][2:v]overlay=0:0[hook_bg2];")
     fc.append(f"[hook_bg2]fade=t=out:st={max(0, hook_dur - transition_dur)}:d={transition_dur}:c=black[hook_v_final];")
     fc.append(f"[4:a]afade=t=out:st={max(0, hook_dur - transition_dur)}:d={transition_dur}[hook_a_final];")
     
     # Reveal segment
-    fc.append(f"[1:v]crop={crop_size}:{crop_size}:{crop_x}:{crop_y},scale=1008:1008,{video_filters}[rev_v_proc];")
+    fc.append(f"[1:v]crop={crop_size}:{crop_size}:{crop_x}:{crop_y},scale=1002:1002,{video_filters}[rev_v_proc];")
     fc.append(f"color=c=white:s=1080x1920:d={rev_dur}:r=30[rev_base];")
-    fc.append(f"[rev_base][rev_v_proc]overlay=36:420:eof_action=pass[rev_bg1];")
+    fc.append(f"[rev_base][rev_v_proc]overlay=39:420:eof_action=pass[rev_bg1];")
     fc.append(f"[rev_bg1][3:v]overlay=0:0[rev_bg2];")
     fc.append(f"[rev_bg2]fade=t=in:st=0:d={transition_dur}:c=black[rev_v_final];")
     fc.append(f"[5:a]afade=t=in:st=0:d={transition_dur}[rev_a_final];")

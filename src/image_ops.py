@@ -105,11 +105,11 @@ def compute_best_font_size(captions, font_path: str, max_width: int, max_lines: 
                     break
                     
             if all_fit:
-                return font_size
+                return int(font_size * 0.8)
             font_size -= 2
             
-    # If we exhaust all loops (e.g. extremely long text), return MIN_FONT
-    return MIN_FONT
+    # If we exhaust all loops (e.g. extremely long text), return MIN_FONT scaled down
+    return int(MIN_FONT * 0.8)
 
 def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_width: int):
     draw = ImageDraw.Draw(img)
