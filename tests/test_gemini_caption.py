@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import io
+import time
 import urllib.request
 import urllib.error
 import subprocess
@@ -79,7 +80,7 @@ def test_empty_context_handling():
         generate_captions(context="   \n  ", api_key="dummy_key")
 
 def test_build_gemini_payload_with_and_without_retries():
-    """Verify payload generation, Saba Bollywood instructions, and retry avoidance list."""
+    """Verify payload generation, Saba Bollywood instructions, visual composition rules, and retry avoidance list."""
     context = "Salman Khan was spotted at Mumbai airport greeting fans"
     
     # Without previous generations
@@ -90,6 +91,22 @@ def test_build_gemini_payload_with_and_without_retries():
     assert "MUST include a comma" in prompt1
     assert "Saba Bollywood" in prompt1
     assert "DO NOT repeat" not in prompt1
+
+    # Verify visual composition & line requirements
+    assert "TWO NATURAL LINES" in prompt1
+    assert "Two lines should be the standard output" in prompt1
+    assert "undesirable" in prompt1.lower()
+    assert "leaves too much empty visual space" in prompt1
+    assert "Three lines are allowed ONLY as an exception" in prompt1
+    assert "Favor a visually balanced two-line composition over an exact character count" in prompt1
+    assert "awkward filler words" in prompt1.lower()
+    assert "45–70" not in prompt1 and "45-70" not in prompt1 and "35-65" not in prompt1
+
+    # Verify capitalization rules (normal sentence capitalization, no Title Case)
+    assert "normal English sentence capitalization" in prompt1
+    assert "Do NOT use Title Case" in prompt1
+    assert "Every-Word-Capitalized" in prompt1
+    assert "proper nouns" in prompt1.lower()
 
     # Verify Gemini 3.8 Flash generationConfig compliance
     gen_config = payload1.get("generationConfig", {})
@@ -107,25 +124,25 @@ def test_build_gemini_payload_with_and_without_retries():
 
     # With previous generations (retry behavior)
     prev = [
-        {"main_caption": "Salman Khan At Mumbai Airport, But Then...", "curiosity_caption": "Fans Rushed Over To Hug Him"},
-        {"main_caption": "Salman Stepped Out Of The Terminal, However...", "curiosity_caption": "He Stopped For A Quick Selfie"}
+        {"main_caption": "Salman Khan was at Mumbai airport, but then...", "curiosity_caption": "fans rushed over to hug him"},
+        {"main_caption": "Salman stepped out of the terminal, however...", "curiosity_caption": "he stopped for a quick selfie"}
     ]
     payload2 = build_gemini_payload(context, previous_generations=prev)
     prompt2 = payload2["contents"][0]["parts"][0]["text"]
     assert "DO NOT repeat or closely mimic any of these previous generations" in prompt2
-    assert "Salman Khan At Mumbai Airport, But Then..." in prompt2
-    assert "He Stopped For A Quick Selfie" in prompt2
+    assert "Salman Khan was at Mumbai airport, but then..." in prompt2
+    assert "he stopped for a quick selfie" in prompt2
 
 def test_structured_gemini_response_parsing():
     """Verify parsing valid JSON, markdown-wrapped JSON, and fallback extraction."""
     # 1. Clean JSON
     raw_json = json.dumps({
-        "main_caption": "Salman Khan Was Walking Down The Street, But Then...",
-        "curiosity_caption": "He Spotted His Friend And Stopped To Shake Hands"
+        "main_caption": "Salman Khan was walking down the street, but then...",
+        "curiosity_caption": "he spotted his friend and stopped to shake hands"
     })
     res1 = parse_gemini_response(raw_json)
-    assert res1["main_caption"] == "Salman Khan Was Walking Down The Street, But Then..."
-    assert res1["curiosity_caption"] == "He Spotted His Friend And Stopped To Shake Hands"
+    assert res1["main_caption"] == "Salman Khan was walking down the street, but then..."
+    assert res1["curiosity_caption"] == "he spotted his friend and stopped to shake hands"
     assert "," in res1["main_caption"]
 
     # 2. Markdown fenced JSON (```json ... ```)
@@ -156,8 +173,14 @@ def test_malformed_gemini_response_handling():
         parse_gemini_response("I cannot fulfill this request as an AI model.")
 
 def test_quota_exhausted_error(monkeypatch):
-    """Verify 429 / quota error raises GeminiQuotaError with clear message."""
+    """Verify 429 / quota error retries with exponential backoff and raises GeminiQuotaError when exhausted."""
+    sleep_calls = []
+    monkeypatch.setattr(time, "sleep", lambda s: sleep_calls.append(s))
+
+    attempt_count = 0
     def mock_urlopen(req, *args, **kwargs):
+        nonlocal attempt_count
+        attempt_count += 1
         fp = io.BytesIO(json.dumps({"error": {"message": "Resource has been exhausted (e.g. check quota)."}}).encode("utf-8"))
         raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {}, fp)
 
@@ -166,12 +189,73 @@ def test_quota_exhausted_error(monkeypatch):
     with pytest.raises(GeminiQuotaError) as exc_info:
         generate_captions(context="Test context", api_key="dummy_key")
     assert "Gemini limit reached. Try again later." in str(exc_info.value)
+    assert attempt_count == 4
+    assert len(sleep_calls) == 3
+
+def test_transient_error_retry_and_recovery(monkeypatch):
+    """Verify transient errors (503, 408, 500, 429) retry and succeed when subsequent attempt passes."""
+    sleep_calls = []
+    monkeypatch.setattr(time, "sleep", lambda s: sleep_calls.append(s))
+
+    for status_code in (503, 408, 500, 429):
+        sleep_calls.clear()
+        attempt_count = 0
+        expected_json = {
+            "main_caption": "Salman Khan was walking down the street, but then...",
+            "curiosity_caption": "he spotted his friend nearby and stopped to shake hands"
+        }
+
+        class MockSuccessResponse:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self):
+                return json.dumps({
+                    "candidates": [{"content": {"parts": [{"text": json.dumps(expected_json)}]}}]
+                }).encode("utf-8")
+
+        def mock_urlopen(req, timeout=15):
+            nonlocal attempt_count
+            attempt_count += 1
+            if attempt_count == 1:
+                fp = io.BytesIO(json.dumps({"error": {"message": f"Transient error {status_code}"}}).encode("utf-8"))
+                raise urllib.error.HTTPError(req.full_url, status_code, "Error", {}, fp)
+            return MockSuccessResponse()
+
+        monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+        res = generate_captions(context="Salman walking", api_key="test_key")
+        assert attempt_count == 2
+        assert len(sleep_calls) == 1
+        assert res["main_caption"] == expected_json["main_caption"]
+
+def test_permanent_errors_fail_immediately_without_retry(monkeypatch):
+    """Verify permanent errors (400, 401, 403, 404) fail immediately without retrying."""
+    sleep_calls = []
+    monkeypatch.setattr(time, "sleep", lambda s: sleep_calls.append(s))
+
+    for status_code in (400, 401, 403, 404):
+        sleep_calls.clear()
+        attempt_count = 0
+
+        def mock_urlopen(req, timeout=15):
+            nonlocal attempt_count
+            attempt_count += 1
+            fp = io.BytesIO(json.dumps({"error": {"message": f"Client error {status_code}"}}).encode("utf-8"))
+            raise urllib.error.HTTPError(req.full_url, status_code, "Client Error", {}, fp)
+
+        monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+        with pytest.raises((GeminiAPIError, GeminiConfigError)):
+            generate_captions(context="Salman walking", api_key="test_key")
+        
+        assert attempt_count == 1
+        assert len(sleep_calls) == 0
 
 def test_successful_api_flow(monkeypatch):
     """Verify complete end-to-end generate_captions flow with mocked API response."""
     expected_data = {
-        "main_caption": "Ranbir Kapoor Was Spotted Leaving The Gym, But Then...",
-        "curiosity_caption": "He Noticed The Paparazzi Waiting Outside"
+        "main_caption": "Ranbir Kapoor was spotted leaving the gym, but then...",
+        "curiosity_caption": "he noticed the paparazzi waiting outside"
     }
     # Response with thought part preceding the text part (standard in Gemini 3.8 thinking mode)
     api_response = {
@@ -220,8 +304,8 @@ def test_server_endpoint_handling(monkeypatch):
     monkeypatch.setattr(
         "src.server.generate_captions",
         lambda context, previous_generations: {
-            "main_caption": "Shah Rukh Khan Arrived At The Venue, But Then...",
-            "curiosity_caption": "Thousands Of Fans Started Cheering His Name"
+            "main_caption": "Shah Rukh Khan arrived at the venue, but then...",
+            "curiosity_caption": "thousands of fans started cheering his name"
         }
     )
 
