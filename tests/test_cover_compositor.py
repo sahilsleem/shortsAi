@@ -30,6 +30,7 @@ from src.cover_compositor import (
     create_cover_frame,
     prepare_source_image,
     apply_visual_finish,
+    detect_subject_region,
     evaluate_placement_zones,
     compute_cover_font_size,
     render_cover_text,
@@ -269,3 +270,120 @@ def test_cli_execution_with_test_image(monkeypatch):
 
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# 7. Face Protection & Text Color Verification Tests
+# ---------------------------------------------------------------------------
+
+def test_detect_subject_region_function():
+    """Verify detect_subject_region detects skin clusters and calculates protected zone."""
+    # 1. Image with synthetic face
+    img_face = Image.new("RGB", (1080, 1080), (70, 70, 70))
+    draw = ImageDraw.Draw(img_face)
+    draw.rectangle([350, 180, 730, 420], fill=(215, 160, 120))
+
+    info = detect_subject_region(img_face)
+    assert info["detected"] is True
+    assert info["face_box"] is not None
+    assert info["protected_y"] is not None
+    # Protected zone should encompass face plus forehead and chin padding
+    prot_y1, prot_y2 = info["protected_y"]
+    assert prot_y1 < 180, "Forehead/hair padding must extend above skin"
+    assert prot_y2 > 420, "Chin/neck padding must extend below skin"
+
+    # 2. Image without skin tones
+    img_plain = Image.new("RGB", (1080, 1080), (30, 30, 80))
+    info_plain = detect_subject_region(img_plain)
+    assert info_plain["detected"] is False
+    assert info_plain["face_box"] is None
+
+
+def test_text_does_not_overlap_detected_face():
+    """
+    Verify text strictly avoids the celebrity's face and head:
+    When face is positioned in the upper portion (e.g. Y=170..450),
+    the compositor selects 'bottom' and text Y bounds have 0 overlap with face.
+    """
+    img = Image.new("RGB", (1080, 1080), (80, 80, 80))
+    draw = ImageDraw.Draw(img)
+    # Face placed at Y=170..450 (typical portrait shot)
+    draw.rectangle([350, 170, 730, 450], fill=(215, 160, 120))
+    # Clutter at bottom (e.g. textured shirt)
+    for y in range(750, 1050, 10):
+        draw.line([(100, y), (980, y)], fill=(200, 200, 200), width=2)
+
+    res = create_cover_frame(img, phrase="SALMAN DID THIS 😳")
+
+    assert res["selected_position"] == "bottom", (
+        f"Expected bottom to avoid face at top, got {res['selected_position']}"
+    )
+    # Verify top zone was flagged with face collision
+    assert res["placement_scores"]["top"]["collides_with_face"] is True
+    assert res["placement_scores"]["bottom"]["collides_with_face"] is False
+
+    # Check text starting Y
+    y_start = res["placement_scores"]["bottom"]["y_start"]
+    # Protected face zone is ~100 to ~520. Text starting at > 800 has 0 overlap.
+    assert y_start > 550, f"Text start Y {y_start} overlaps with face zone (170-450)"
+
+
+def test_face_at_bottom_selects_top():
+    """
+    Verify that if a face is in the lower portion (e.g. leaning in at bottom),
+    the compositor selects 'top' so text never obscures the face.
+    """
+    img = Image.new("RGB", (1080, 1080), (80, 80, 80))
+    draw = ImageDraw.Draw(img)
+    # Face placed at Y=750..980
+    draw.rectangle([350, 750, 730, 980], fill=(215, 160, 120))
+
+    res = create_cover_frame(img, phrase="WAIT FOR IT 😳")
+
+    assert res["selected_position"] == "top", (
+        f"Expected top to avoid face at bottom, got {res['selected_position']}"
+    )
+    assert res["placement_scores"]["bottom"]["collides_with_face"] is True
+    assert res["placement_scores"]["top"]["collides_with_face"] is False
+
+
+def test_lower_clear_area_preferred_when_available():
+    """
+    Verify that when both top and bottom areas are clear, the compositor
+    prefers the lower portion (bottom) as specified in requirements.
+    """
+    # Plain image with clean negative space across top and bottom
+    img = Image.new("RGB", (1080, 1080), (60, 60, 60))
+    info = evaluate_placement_zones(img)
+
+    assert info["recommended"] == "bottom"
+    assert info["scores"]["bottom"]["preference_bonus"] < 0, "Expected negative bonus favoring bottom"
+
+
+def test_text_color_white_fill_with_solid_black_stroke():
+    """
+    Verify the cover text renders with:
+    1. Pure WHITE text fill (R>240, G>240, B>240)
+    2. Strong BLACK outline/stroke (R<25, G<25, B<25)
+    3. High-contrast typography instantly readable on mobile
+    """
+    # Use neutral gray canvas so white letters and black outlines are easily separated
+    img = Image.new("RGB", (1080, 1080), (128, 128, 128))
+    res = create_cover_frame(img, phrase="UNBELIEVABLE 😳", apply_finish=False)
+
+    out_img = res["output_image"]
+    y_start = res["placement_scores"][res["selected_position"]]["y_start"]
+
+    # Sample horizontal slice through the rendered letters
+    sample_y = int(y_start + 45)
+    pixels = [out_img.getpixel((x, sample_y)) for x in range(100, 980)]
+
+    white_pixels = [p for p in pixels if p[0] > 240 and p[1] > 240 and p[2] > 240]
+    black_pixels = [p for p in pixels if p[0] < 30 and p[1] < 30 and p[2] < 30]
+
+    assert len(white_pixels) >= 20, (
+        f"Expected substantial white text fill pixels, found {len(white_pixels)}"
+    )
+    assert len(black_pixels) >= 20, (
+        f"Expected substantial black outline stroke pixels, found {len(black_pixels)}"
+    )

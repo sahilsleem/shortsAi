@@ -126,19 +126,120 @@ def apply_visual_finish(img: Image.Image) -> Image.Image:
 # 3. Smart Text Placement & Face Avoidance Heuristic
 # ---------------------------------------------------------------------------
 
-def evaluate_placement_zones(img: Image.Image) -> dict:
+def detect_subject_region(img: Image.Image) -> dict:
+    """
+    Detects human subject / celebrity face region using color-space chrominance
+    analysis (YCbCr) in pure Python with zero external runtime dependencies.
+    Identifies the primary vertical span of the face and pads it to protect
+    the forehead/hair and chin/neck as a strict no-text zone.
+    """
+    w, h = img.size
+    small_w, small_h = 108, 108
+    small = img.resize((small_w, small_h), Image.Resampling.BILINEAR)
+    ycbcr = small.convert("YCbCr")
+    y_ch, cb_ch, cr_ch = ycbcr.split()
+    y_bytes = y_ch.tobytes()
+    cb_bytes = cb_ch.tobytes()
+    cr_bytes = cr_ch.tobytes()
+
+    scale_y = h / float(small_h)
+    scale_x = w / float(small_w)
+
+    skin_mask = []
+    row_counts = [0] * small_h
+    for y in range(small_h):
+        for x in range(small_w):
+            idx = y * small_w + x
+            lum = y_bytes[idx]
+            cb = cb_bytes[idx]
+            cr = cr_bytes[idx]
+            # Human skin chrominance cluster:
+            # Cr > Cb (hemoglobin red chrominance) reliably separates human skin from
+            # warm wooden backgrounds, beige walls, and ambient indoor lighting.
+            if (75 <= cb <= 135) and (135 <= cr <= 180) and ((cr - cb) >= 10) and (lum >= 45):
+                row_counts[y] += 1
+                skin_mask.append((x, y))
+
+    # A face row must have at least ~8 skin pixels in a 108px row
+    face_rows = [y for y, count in enumerate(row_counts) if count >= 8]
+    if not face_rows:
+        return {
+            "detected": False,
+            "face_box": None,
+            "protected_y": None,
+            "skin_ratio": 0.0
+        }
+
+    # Find contiguous segments of rows where skin was detected
+    segments = []
+    current_seg = [face_rows[0]]
+    for r in face_rows[1:]:
+        if r <= current_seg[-1] + 2:  # Allow small gaps (e.g. eyes/glasses/mustache)
+            current_seg.append(r)
+        else:
+            segments.append(current_seg)
+            current_seg = [r]
+    segments.append(current_seg)
+
+    # Pick the largest/densest segment as the main face
+    main_seg = max(segments, key=lambda seg: sum(row_counts[r] for r in seg))
+    min_row, max_row = main_seg[0], main_seg[-1]
+
+    face_xs = [x for (x, y) in skin_mask if min_row <= y <= max_row]
+    min_col = min(face_xs) if face_xs else 0
+    max_col = max(face_xs) if face_xs else small_w - 1
+
+    y_min = int(min_row * scale_y)
+    y_max = int((max_row + 1) * scale_y)
+    x_min = int(min_col * scale_x)
+    x_max = int((max_col + 1) * scale_x)
+
+    # Protective padding:
+    # Top padding protects forehead and hair (7% of image height)
+    # Bottom padding protects chin, jaw, and collar (7% of image height)
+    prot_y_min = max(0, y_min - int(h * 0.07))
+    prot_y_max = min(h, y_max + int(h * 0.07))
+
+    return {
+        "detected": True,
+        "face_box": (x_min, y_min, x_max, y_max),
+        "protected_y": (prot_y_min, prot_y_max),
+        "skin_ratio": len(skin_mask) / float(small_w * small_h)
+    }
+
+
+def evaluate_placement_zones(
+    img: Image.Image,
+    text_height: int = 150,
+    force_position: Optional[str] = None
+) -> dict:
     """
     Evaluates candidate text zones ('top' vs 'bottom') on the image.
-    Calculates face/skin presence, edge clutter, and luminance variance.
-    The zone with lower clutter and lower face likelihood is preferred so text
-    never covers the celebrity's face.
+    1. Detects face/subject region and treats it as a strictly protected no-text zone.
+    2. Calculates face/subject collision, edge clutter, and luminance variance.
+    3. Prevents text from ever covering the celebrity's face or head (massive collision penalty).
+    4. Prefers the lower portion ('bottom') when clear and available.
+    5. If bottom is obstructed by the subject or blocked, selects the cleanest available area (top).
     """
     w, h = img.size
 
-    # Define candidate evaluation zones
+    # Detect human subject / celebrity face region
+    subject_info = detect_subject_region(img)
+
+    # Candidate text placement boxes
+    # Top text zone: Y: ~8% to 8% + text_height
+    # Bottom text zone: Y: ~92% - text_height to 92%
+    top_y_start = int(h * 0.08)
+    top_y_end = int(top_y_start + text_height)
+    top_box = (int(w * 0.05), top_y_start, int(w * 0.95), top_y_end)
+
+    bot_y_end = int(h * 0.92)
+    bot_y_start = int(bot_y_end - text_height)
+    bot_box = (int(w * 0.05), bot_y_start, int(w * 0.95), bot_y_end)
+
     zones = {
-        "top": (int(w * 0.05), int(h * 0.05), int(w * 0.95), int(h * 0.28)),
-        "bottom": (int(w * 0.05), int(h * 0.72), int(w * 0.95), int(h * 0.95))
+        "top": top_box,
+        "bottom": bot_box
     }
 
     scores = {}
@@ -147,14 +248,41 @@ def evaluate_placement_zones(img: Image.Image) -> dict:
     ycbcr = img.convert("YCbCr")
 
     for name, box in zones.items():
-        # 1. Face / Skin Likelihood in zone
+        z_x1, z_y1, z_x2, z_y2 = box
+
+        # 1. Subject / Face Collision Protection
+        collides = False
+        face_overlap_ratio = 0.0
+        face_penalty = 0.0
+
+        if subject_info["detected"]:
+            prot_y1, prot_y2 = subject_info["protected_y"]
+            overlap_y1 = max(z_y1, prot_y1)
+            overlap_y2 = min(z_y2, prot_y2)
+            overlap_h = max(0, overlap_y2 - overlap_y1)
+
+            if overlap_h > 0:
+                collides = True
+                face_overlap_ratio = overlap_h / float(max(1, text_height))
+                # Severe disqualifying penalty: text must NEVER cover the face
+                face_penalty = 10000.0 + (face_overlap_ratio * 5000.0)
+
+        # In addition, measure skin ratio within the candidate zone
         zone_ycbcr = ycbcr.crop(box)
-        _, cb, cr = zone_ycbcr.split()
-        cb_bytes = cb.tobytes()
-        cr_bytes = cr.tobytes()
+        zone_y, zone_cb, zone_cr = zone_ycbcr.split()
+        cb_bytes = zone_cb.tobytes()
+        cr_bytes = zone_cr.tobytes()
+        lum_bytes = zone_y.tobytes()
         total_pixels = max(1, len(cb_bytes))
-        skin_count = sum(1 for b, r in zip(cb_bytes, cr_bytes) if 75 <= b <= 135 and 130 <= r <= 180)
+        skin_count = sum(
+            1 for b, r, l in zip(cb_bytes, cr_bytes, lum_bytes)
+            if 75 <= b <= 135 and 135 <= r <= 180 and (r - b) >= 10 and l >= 45
+        )
         skin_ratio = skin_count / total_pixels
+
+        # If not already penalized for direct collision, skin presence adds mild penalty
+        if not collides:
+            face_penalty = skin_ratio * 70.0
 
         # 2. Edge / Visual Clutter in zone
         zone_edges = edges.crop(box)
@@ -164,32 +292,41 @@ def evaluate_placement_zones(img: Image.Image) -> dict:
         zone_gray = gray.crop(box)
         lum_stddev = ImageStat.Stat(zone_gray).stddev[0]
 
-        # Clutter score: heavily weights skin/face presence to protect celebrity face
-        face_penalty = skin_ratio * 70.0
         clutter_penalty = edge_mean * 1.0
         variance_penalty = lum_stddev * 0.25
-        total_zone_clutter = face_penalty + clutter_penalty + variance_penalty
+
+        # 4. Position preference: strongly prefer bottom when clear of face
+        pref_bonus = -25.0 if name == "bottom" else 0.0
+
+        total_zone_clutter = face_penalty + clutter_penalty + variance_penalty + pref_bonus
 
         scores[name] = {
             "face_penalty": round(face_penalty, 2),
             "edge_clutter": round(clutter_penalty, 2),
             "variance": round(variance_penalty, 2),
-            "total_clutter": round(total_zone_clutter, 2)
+            "preference_bonus": round(pref_bonus, 2),
+            "total_clutter": round(total_zone_clutter, 2),
+            "collides_with_face": collides,
+            "skin_ratio": round(skin_ratio, 3),
+            "y_start": z_y1,
+            "y_end": z_y2
         }
 
-    # Pick zone with lower clutter (cleaner space, minimum face overlap)
-    # Default bias slightly toward bottom if scores are very close
-    top_score = scores["top"]["total_clutter"]
-    bottom_score = scores["bottom"]["total_clutter"]
-
-    if bottom_score <= top_score + 4.0:
-        recommended = "bottom"
+    # Pick zone with lower clutter (cleaner space, strictly avoiding face)
+    if force_position in ("top", "bottom"):
+        recommended = force_position
     else:
-        recommended = "top"
+        top_score = scores["top"]["total_clutter"]
+        bottom_score = scores["bottom"]["total_clutter"]
+        if bottom_score <= top_score:
+            recommended = "bottom"
+        else:
+            recommended = "top"
 
     return {
         "recommended": recommended,
-        "scores": scores
+        "scores": scores,
+        "subject_region": subject_info
     }
 
 
@@ -331,10 +468,15 @@ def render_cover_text(
     canvas: Image.Image,
     phrase: str,
     font_path: str,
-    position: str = "bottom"
+    position: str = "bottom",
+    custom_y: Optional[int] = None
 ) -> Image.Image:
     """
-    Renders high-impact cover typography onto the canvas with soft shadow and emoji support.
+    Renders high-impact cover typography onto the canvas:
+    - Pure WHITE text fill.
+    - Strong BLACK outline/stroke around every letter for instant mobile legibility.
+    - Subtle soft drop shadow behind the outline for depth and separation from the photo.
+    - Full color emoji support.
     """
     if not phrase or not phrase.strip():
         return canvas
@@ -354,35 +496,58 @@ def render_cover_text(
     line_spacing = font_size * 0.15
     total_text_h = len(lines) * line_h + max(0, len(lines) - 1) * line_spacing
 
-    # Calculate starting Y based on position
-    if position == "top":
+    # Calculate starting Y
+    if custom_y is not None:
+        start_y = custom_y
+    elif position == "top":
         start_y = int(h * 0.08)
     else:  # bottom
         # Leaves elegant margin from bottom (watermark sits at opposite pole)
         start_y = int(h * 0.92 - total_text_h)
+
+    # Stroke width proportional to font size (typically 3 to 4 pixels)
+    stroke_w = max(3, min(5, int(round(font_size * 0.055))))
 
     curr_y = start_y
     for line in lines:
         line_w = get_text_width(line, font, pilmoji_ctx, draw)
         curr_x = (w - line_w) // 2
 
-        # 1. Subtle soft drop shadow for readability
-        # Render shadow text
+        # 1. Subtle soft shadow behind the outline for depth & separation
         text_only = emoji.replace_emoji(line, "") if emoji else line
         if text_only.strip():
-            # Soft multi-offset shadow
-            draw.text((curr_x + 2, curr_y + 3), text_only, fill=(0, 0, 0, 180), font=font)
-            draw.text((curr_x + 3, curr_y + 4), text_only, fill=(0, 0, 0, 120), font=font)
+            draw.text(
+                (curr_x + 3, curr_y + 4),
+                text_only,
+                fill=(0, 0, 0, 140),
+                font=font,
+                stroke_width=stroke_w,
+                stroke_fill=(0, 0, 0, 140)
+            )
 
-        # 2. Main crisp white typography
-        if text_only.strip():
-            draw.text((curr_x, curr_y), text_only, fill=(255, 255, 255, 255), font=font)
+        # 2. Main crisp typography with pure WHITE fill and solid BLACK outline
+        if pilmoji_ctx:
+            # Pilmoji handles both the white text with solid black stroke and full-color emojis in a single pass
+            pilmoji_ctx.text(
+                (curr_x, curr_y),
+                line,
+                fill=(255, 255, 255, 255),
+                font=font,
+                stroke_width=stroke_w,
+                stroke_fill=(0, 0, 0, 255)
+            )
+        else:
+            if text_only.strip():
+                draw.text(
+                    (curr_x, curr_y),
+                    text_only,
+                    fill=(255, 255, 255, 255),
+                    font=font,
+                    stroke_width=stroke_w,
+                    stroke_fill=(0, 0, 0, 255)
+                )
 
-        # 3. Emoji glyphs rendered via Pilmoji with full color
-        if pilmoji_ctx and emoji and emoji.emoji_count(line) > 0:
-            pilmoji_ctx.text((curr_x, curr_y), line, fill=(0, 0, 0, 0), font=font)
-
-        curr_y += line_h + line_spacing
+        curr_y += int(line_h + line_spacing)
 
     return canvas
 
@@ -470,24 +635,34 @@ def create_cover_frame(
     if apply_finish:
         canvas = apply_visual_finish(canvas)
 
-    # 3. Placement analysis
-    placement_info = evaluate_placement_zones(canvas)
-    if text_position in ("top", "bottom"):
-        selected_position = text_position
-    else:
-        selected_position = placement_info["recommended"]
+    # 3. Typography & Placement analysis
+    resolved_font = font_path or DEFAULT_FONT_PATH
+    if not os.path.exists(resolved_font):
+        resolved_font = "fonts/Calistoga-Regular.ttf"
+
+    text_h = 150
+    if phrase and phrase.strip():
+        font_size, lines = compute_cover_font_size(phrase, resolved_font, max_width=int(canvas.width * 0.88))
+        try:
+            meas_font = ImageFont.truetype(resolved_font, font_size)
+        except IOError:
+            meas_font = ImageFont.load_default()
+        line_h = get_line_height(meas_font, None, ImageDraw.Draw(canvas))
+        line_spacing = font_size * 0.15
+        text_h = int(len(lines) * line_h + max(0, len(lines) - 1) * line_spacing)
+
+    force_pos = text_position if text_position in ("top", "bottom") else None
+    placement_info = evaluate_placement_zones(canvas, text_height=text_h, force_position=force_pos)
+    selected_position = placement_info["recommended"]
+    selected_y = placement_info["scores"][selected_position]["y_start"]
 
     # 4. Natural text backdrop gradient
     if phrase and phrase.strip():
         text_grad = create_text_gradient(canvas.width, canvas.height, position=selected_position)
         canvas.alpha_composite(text_grad)
 
-    # 5. Render cover text
-    resolved_font = font_path or DEFAULT_FONT_PATH
-    if not os.path.exists(resolved_font):
-        resolved_font = "fonts/Calistoga-Regular.ttf"
-
-    canvas = render_cover_text(canvas, phrase, resolved_font, position=selected_position)
+    # 5. Render cover text with white fill and solid black outline
+    canvas = render_cover_text(canvas, phrase, resolved_font, position=selected_position, custom_y=selected_y)
 
     # 6. Apply branding
     resolved_wm = watermark_path if watermark_path is not None else DEFAULT_WATERMARK_PATH
@@ -514,6 +689,7 @@ def create_cover_frame(
         "phrase": phrase,
         "selected_position": selected_position,
         "placement_scores": placement_info["scores"],
+        "subject_region": placement_info.get("subject_region"),
         "font_used": resolved_font,
         "watermark_used": bool(resolved_wm and os.path.exists(resolved_wm))
     }
@@ -562,6 +738,8 @@ def main():
 
     top_s = result["placement_scores"]["top"]["total_clutter"]
     bot_s = result["placement_scores"]["bottom"]["total_clutter"]
+    top_coll = result["placement_scores"]["top"]["collides_with_face"]
+    bot_coll = result["placement_scores"]["bottom"]["collides_with_face"]
 
     print("=" * 60)
     print("SABA BOLLYWOOD COVER FRAME COMPOSITOR - PHASE 3")
@@ -570,7 +748,9 @@ def main():
     print(f"Output Image:       {args.output}")
     print(f"Target Size:        {result['size'][0]} x {result['size'][1]}")
     print(f"Phrase:             \"{result['phrase']}\"")
-    print(f"Selected Position:  {result['selected_position']} (top clutter: {top_s}, bottom clutter: {bot_s})")
+    print(f"Selected Position:  {result['selected_position']}")
+    print(f"Top Clutter:        {top_s} (face collision: {'YES' if top_coll else 'NO'})")
+    print(f"Bottom Clutter:     {bot_s} (face collision: {'YES' if bot_coll else 'NO'})")
     print(f"Branding Applied:   {'Yes' if result['watermark_used'] else 'No'}")
     print(f"Visual Finish:      {'No' if args.no_finish else 'Yes'}")
     print(f"Status:             Saved {result['size'][0]}x{result['size'][1]} successfully")
