@@ -155,7 +155,7 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
         
     words = get_word_list(caption)
     if not words:
-        return int(82 * 0.8)
+        return 82
 
     # 1. Calistoga Reference Baseline
     CALISTOGA_PATH = str(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts", "Calistoga-Regular.ttf"))
@@ -218,8 +218,8 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
         except IOError:
             pass
 
-    # 3. Apply 20% reduction exactly once
-    final_font_size = int(alt_base_size * 0.8)
+    # Restored historical scale (no 0.8 reduction)
+    final_font_size = alt_base_size
 
     # Count final lines for diagnostic logging
     try:
