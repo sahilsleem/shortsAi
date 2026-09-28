@@ -1,4 +1,5 @@
 import os
+import string
 import emoji
 from PIL import Image, ImageDraw, ImageFont
 
@@ -20,6 +21,11 @@ def get_word_list(caption):
     if caption.main_text:
         for w in caption.main_text.split(" "):
             if w:
+                if getattr(caption, "mode", "") == "main":
+                    clean_w = w.translate(str.maketrans('', '', string.punctuation))
+                    if clean_w and clean_w.isupper():
+                        words.append((w, (255, 0, 0, 255)))
+                        continue
                 words.append((w, (0, 0, 0, 255)))
                 
     if caption.curiosity_text:

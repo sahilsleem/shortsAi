@@ -7,6 +7,7 @@ class CaptionData:
     main_text: str
     curiosity_text: str = ""
     emoji: str = ""
+    mode: str = ""
 
 @dataclass
 class RenderConfig:

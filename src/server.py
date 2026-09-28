@@ -139,7 +139,7 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     font_path = str(Path("fonts/Calistoga-Regular.ttf").resolve())
                     
                     if mode == "main":
-                        cap = CaptionData(main_text=caption_main, curiosity_text="", emoji=caption_main_emoji)
+                        cap = CaptionData(main_text=caption_main, curiosity_text="", emoji=caption_main_emoji, mode="main")
                         fs = compute_best_font_size([cap], font_path, 936, 3)
                         overlay_path = workspace / "overlay.png"
                         generate_text_overlay(cap, font_path, fs, str(overlay_path))
