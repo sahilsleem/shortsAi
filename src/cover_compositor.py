@@ -1,0 +1,580 @@
+"""
+src/cover_compositor.py - Saba Bollywood Cover Frame Compositor
+
+Phase 3 Compositor:
+Transforms a selected clean square video frame into a polished 1080x1080 Saba Bollywood
+cover frame / thumbnail image.
+- Preserves clean square footage without distortion or artificial letterboxing.
+- Applies subtle visual polish (contrast, mild saturation, gentle sharpening, soft vignette).
+- Smart text placement (evaluates visual complexity, luminance, and face/subject presence
+  to automatically place text where it never covers the celebrity's face).
+- Elegant Saba Bollywood branding using existing assets, scaled proportionally.
+- High-quality, readable typography with subtle drop shadow and natural background gradient.
+- Standalone CLI for local diagnostic testing.
+"""
+
+import os
+import sys
+import math
+import argparse
+from pathlib import Path
+from typing import Union, Optional, Tuple
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageStat, ImageEnhance
+
+try:
+    import emoji
+except ImportError:
+    emoji = None
+
+try:
+    from pilmoji import Pilmoji
+    from pilmoji.source import AppleEmojiSource
+except ImportError:
+    Pilmoji = None
+    AppleEmojiSource = None
+
+DEFAULT_FONT_PATH = str(Path(__file__).resolve().parent.parent / "fonts" / "Calistoga-Regular.ttf")
+DEFAULT_WATERMARK_PATH = str(Path(__file__).resolve().parent.parent / "assets" / "saba_bollywood_watermark.png")
+
+
+# ---------------------------------------------------------------------------
+# 1. Source Image Preparation & Scaling
+# ---------------------------------------------------------------------------
+
+def prepare_source_image(img: Image.Image, target_size: Tuple[int, int] = (1080, 1080)) -> Image.Image:
+    """
+    Scale the source image to target_size (default 1080x1080) maintaining 1:1 aspect ratio.
+    If the source is already square, performs high-quality Lanczos scaling.
+    If non-square, center-crops the largest square first to prevent stretching or letterboxing.
+    """
+    w, h = img.size
+    target_w, target_h = target_size
+
+    # Ensure square crop if input has non-square aspect ratio
+    if w != h:
+        min_dim = min(w, h)
+        left = (w - min_dim) // 2
+        top = (h - min_dim) // 2
+        img = img.crop((left, top, left + min_dim, top + min_dim))
+
+    if img.size != (target_w, target_h):
+        img = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+    return img.convert("RGBA")
+
+
+# ---------------------------------------------------------------------------
+# 2. Subtle Visual Finish Pass
+# ---------------------------------------------------------------------------
+
+def create_radial_vignette(width: int, height: int, max_alpha: int = 38) -> Image.Image:
+    """
+    Generates a soft, natural radial vignette that gently darkens only the outermost corners.
+    Keeps center 100% transparent and natural.
+    """
+    grid_size = 54
+    center = grid_size / 2.0
+    pixels = []
+    for y in range(grid_size):
+        for x in range(grid_size):
+            dist = math.sqrt((x - center) ** 2 + (y - center) ** 2) / center
+            # Smooth falloff starting at 70% radius from center
+            if dist > 0.70:
+                t = (dist - 0.70) / 0.45
+                alpha = int(min(max_alpha, max(0, t * max_alpha)))
+            else:
+                alpha = 0
+            pixels.append((0, 0, 0, alpha))
+
+    small = Image.new("RGBA", (grid_size, grid_size))
+    small.putdata(pixels)
+    return small.resize((width, height), Image.Resampling.BILINEAR)
+
+def apply_visual_finish(img: Image.Image) -> Image.Image:
+    """
+    Applies a restrained visual polish to elevate the frame into a poster/cover image:
+    - Subtle contrast (+5%)
+    - Mild saturation (+6%)
+    - Subtle sharpening (+15%)
+    - Soft radial corner vignette
+    Preserves natural skin tones and original camera lighting.
+    """
+    rgb = img.convert("RGB")
+
+    # 1. Subtle contrast
+    enhancer_contrast = ImageEnhance.Contrast(rgb)
+    rgb = enhancer_contrast.enhance(1.05)
+
+    # 2. Mild saturation
+    enhancer_color = ImageEnhance.Color(rgb)
+    rgb = enhancer_color.enhance(1.06)
+
+    # 3. Subtle sharpening
+    enhancer_sharp = ImageEnhance.Sharpness(rgb)
+    rgb = enhancer_sharp.enhance(1.15)
+
+    result = rgb.convert("RGBA")
+
+    # 4. Soft radial vignette
+    vignette = create_radial_vignette(img.width, img.height, max_alpha=35)
+    result.alpha_composite(vignette)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 3. Smart Text Placement & Face Avoidance Heuristic
+# ---------------------------------------------------------------------------
+
+def evaluate_placement_zones(img: Image.Image) -> dict:
+    """
+    Evaluates candidate text zones ('top' vs 'bottom') on the image.
+    Calculates face/skin presence, edge clutter, and luminance variance.
+    The zone with lower clutter and lower face likelihood is preferred so text
+    never covers the celebrity's face.
+    """
+    w, h = img.size
+
+    # Define candidate evaluation zones
+    zones = {
+        "top": (int(w * 0.05), int(h * 0.05), int(w * 0.95), int(h * 0.28)),
+        "bottom": (int(w * 0.05), int(h * 0.72), int(w * 0.95), int(h * 0.95))
+    }
+
+    scores = {}
+    gray = img.convert("L")
+    edges = gray.filter(ImageFilter.FIND_EDGES)
+    ycbcr = img.convert("YCbCr")
+
+    for name, box in zones.items():
+        # 1. Face / Skin Likelihood in zone
+        zone_ycbcr = ycbcr.crop(box)
+        _, cb, cr = zone_ycbcr.split()
+        cb_bytes = cb.tobytes()
+        cr_bytes = cr.tobytes()
+        total_pixels = max(1, len(cb_bytes))
+        skin_count = sum(1 for b, r in zip(cb_bytes, cr_bytes) if 75 <= b <= 135 and 130 <= r <= 180)
+        skin_ratio = skin_count / total_pixels
+
+        # 2. Edge / Visual Clutter in zone
+        zone_edges = edges.crop(box)
+        edge_mean = ImageStat.Stat(zone_edges).mean[0]
+
+        # 3. Luminance Variance in zone
+        zone_gray = gray.crop(box)
+        lum_stddev = ImageStat.Stat(zone_gray).stddev[0]
+
+        # Clutter score: heavily weights skin/face presence to protect celebrity face
+        face_penalty = skin_ratio * 70.0
+        clutter_penalty = edge_mean * 1.0
+        variance_penalty = lum_stddev * 0.25
+        total_zone_clutter = face_penalty + clutter_penalty + variance_penalty
+
+        scores[name] = {
+            "face_penalty": round(face_penalty, 2),
+            "edge_clutter": round(clutter_penalty, 2),
+            "variance": round(variance_penalty, 2),
+            "total_clutter": round(total_zone_clutter, 2)
+        }
+
+    # Pick zone with lower clutter (cleaner space, minimum face overlap)
+    # Default bias slightly toward bottom if scores are very close
+    top_score = scores["top"]["total_clutter"]
+    bottom_score = scores["bottom"]["total_clutter"]
+
+    if bottom_score <= top_score + 4.0:
+        recommended = "bottom"
+    else:
+        recommended = "top"
+
+    return {
+        "recommended": recommended,
+        "scores": scores
+    }
+
+
+# ---------------------------------------------------------------------------
+# 4. Typography & Text Rendering
+# ---------------------------------------------------------------------------
+
+def get_text_width(word: str, font: ImageFont.ImageFont, pilmoji_context, draw: ImageDraw.ImageDraw) -> float:
+    """Measure word or phrase width with Pilmoji fallback."""
+    if pilmoji_context:
+        return pilmoji_context.getsize(word, font=font)[0]
+    return draw.textlength(word, font=font)
+
+def get_line_height(font: ImageFont.ImageFont, pilmoji_context, draw: ImageDraw.ImageDraw) -> float:
+    """Measure single line typographic height."""
+    if pilmoji_context:
+        return pilmoji_context.getsize("AydY~.", font=font)[1]
+    bbox = draw.textbbox((0, 0), "AydY~.", font=font)
+    return bbox[3] - bbox[1]
+
+def wrap_cover_phrase(
+    phrase: str,
+    font: ImageFont.ImageFont,
+    max_width: int,
+    pilmoji_context,
+    draw: ImageDraw.ImageDraw
+) -> list[str]:
+    """
+    Wraps short cover phrases into 1 or 2 visually balanced lines.
+    """
+    phrase = phrase.strip()
+    if not phrase:
+        return []
+
+    # Check if full phrase fits on 1 line
+    if get_text_width(phrase, font, pilmoji_context, draw) <= max_width:
+        return [phrase]
+
+    words = phrase.split()
+    if len(words) <= 1:
+        return [phrase]
+
+    # Find the cleanest 2-line split point that balances line widths
+    best_split = 1
+    min_diff = float("inf")
+    for i in range(1, len(words)):
+        line1 = " ".join(words[:i])
+        line2 = " ".join(words[i:])
+        w1 = get_text_width(line1, font, pilmoji_context, draw)
+        w2 = get_text_width(line2, font, pilmoji_context, draw)
+        if max(w1, w2) <= max_width:
+            diff = abs(w1 - w2)
+            if diff < min_diff:
+                min_diff = diff
+                best_split = i
+
+    line1 = " ".join(words[:best_split])
+    line2 = " ".join(words[best_split:])
+    return [line1, line2]
+
+def compute_cover_font_size(
+    phrase: str,
+    font_path: str,
+    max_width: int = 940,
+    max_font_size: int = 74,
+    min_font_size: int = 46
+) -> Tuple[int, list[str]]:
+    """
+    Computes optimal bold font size for short cover phrase.
+    Favors 1 line if possible, otherwise clean 2-line composition.
+    """
+    dummy_img = Image.new("RGBA", (10, 10))
+    dummy_draw = ImageDraw.Draw(dummy_img)
+    pilmoji_ctx = Pilmoji(dummy_img, source=AppleEmojiSource) if Pilmoji else None
+
+    # First attempt: find single line fit down to 54px
+    for fs in range(max_font_size, 53, -2):
+        try:
+            f = ImageFont.truetype(font_path, fs)
+        except IOError:
+            f = ImageFont.load_default()
+        if get_text_width(phrase, f, pilmoji_ctx, dummy_draw) <= max_width:
+            return fs, [phrase]
+
+    # Second attempt: 2-line fit
+    for fs in range(max_font_size - 4, min_font_size - 1, -2):
+        try:
+            f = ImageFont.truetype(font_path, fs)
+        except IOError:
+            f = ImageFont.load_default()
+        lines = wrap_cover_phrase(phrase, f, max_width, pilmoji_ctx, dummy_draw)
+        if len(lines) <= 2:
+            all_fit = all(get_text_width(l, f, pilmoji_ctx, dummy_draw) <= max_width for l in lines)
+            if all_fit:
+                return fs, lines
+
+    # Fallback to min_font_size
+    try:
+        f = ImageFont.truetype(font_path, min_font_size)
+    except IOError:
+        f = ImageFont.load_default()
+    lines = wrap_cover_phrase(phrase, f, max_width, pilmoji_ctx, dummy_draw)
+    return min_font_size, lines
+
+def create_text_gradient(
+    width: int,
+    height: int,
+    position: str = "bottom",
+    max_alpha: int = 140
+) -> Image.Image:
+    """
+    Creates a gentle, seamless gradient behind text so white typography
+    remains completely legible against any image background without a harsh box.
+    """
+    gradient = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(gradient)
+
+    if position == "bottom":
+        start_y = int(height * 0.72)
+        end_y = height
+        span = max(1, end_y - start_y)
+        for y in range(start_y, end_y):
+            t = (y - start_y) / span
+            # Smooth quadratic curve for natural cinematic vignette
+            alpha = int(max_alpha * (t ** 1.4))
+            draw.line([(0, y), (width, y)], fill=(0, 0, 0, alpha))
+    else:  # top
+        start_y = 0
+        end_y = int(height * 0.28)
+        span = max(1, end_y - start_y)
+        for y in range(start_y, end_y):
+            t = (end_y - y) / span
+            alpha = int(max_alpha * (t ** 1.4))
+            draw.line([(0, y), (width, y)], fill=(0, 0, 0, alpha))
+
+    return gradient
+
+def render_cover_text(
+    canvas: Image.Image,
+    phrase: str,
+    font_path: str,
+    position: str = "bottom"
+) -> Image.Image:
+    """
+    Renders high-impact cover typography onto the canvas with soft shadow and emoji support.
+    """
+    if not phrase or not phrase.strip():
+        return canvas
+
+    w, h = canvas.size
+    font_size, lines = compute_cover_font_size(phrase, font_path, max_width=int(w * 0.88))
+
+    try:
+        font = ImageFont.truetype(font_path, font_size)
+    except IOError:
+        font = ImageFont.load_default()
+
+    draw = ImageDraw.Draw(canvas)
+    pilmoji_ctx = Pilmoji(canvas, source=AppleEmojiSource) if Pilmoji else None
+
+    line_h = get_line_height(font, pilmoji_ctx, draw)
+    line_spacing = font_size * 0.15
+    total_text_h = len(lines) * line_h + max(0, len(lines) - 1) * line_spacing
+
+    # Calculate starting Y based on position
+    if position == "top":
+        start_y = int(h * 0.08)
+    else:  # bottom
+        # Leaves elegant margin from bottom (watermark sits at opposite pole)
+        start_y = int(h * 0.92 - total_text_h)
+
+    curr_y = start_y
+    for line in lines:
+        line_w = get_text_width(line, font, pilmoji_ctx, draw)
+        curr_x = (w - line_w) // 2
+
+        # 1. Subtle soft drop shadow for readability
+        # Render shadow text
+        text_only = emoji.replace_emoji(line, "") if emoji else line
+        if text_only.strip():
+            # Soft multi-offset shadow
+            draw.text((curr_x + 2, curr_y + 3), text_only, fill=(0, 0, 0, 180), font=font)
+            draw.text((curr_x + 3, curr_y + 4), text_only, fill=(0, 0, 0, 120), font=font)
+
+        # 2. Main crisp white typography
+        if text_only.strip():
+            draw.text((curr_x, curr_y), text_only, fill=(255, 255, 255, 255), font=font)
+
+        # 3. Emoji glyphs rendered via Pilmoji with full color
+        if pilmoji_ctx and emoji and emoji.emoji_count(line) > 0:
+            pilmoji_ctx.text((curr_x, curr_y), line, fill=(0, 0, 0, 0), font=font)
+
+        curr_y += line_h + line_spacing
+
+    return canvas
+
+
+# ---------------------------------------------------------------------------
+# 5. Saba Bollywood Branding Overlay
+# ---------------------------------------------------------------------------
+
+def apply_branding(
+    canvas: Image.Image,
+    watermark_path: str,
+    text_position: str = "bottom"
+) -> Image.Image:
+    """
+    Composites the Saba Bollywood watermark asset proportionally onto the cover frame.
+    Places the branding at the opposite pole of the cover text (e.g. text at bottom -> branding at top)
+    to achieve balanced visual hierarchy and leave the center clear for the celebrity.
+    """
+    if not watermark_path or not os.path.exists(watermark_path):
+        return canvas
+
+    try:
+        with Image.open(watermark_path) as wm:
+            orig_w, orig_h = wm.size
+            # Scale proportionally: 27px height for 1080x1080 standalone image (width ~316px)
+            scale = 27.0 / float(orig_h)
+            new_w = int(orig_w * scale)
+            new_h = 27
+            wm_scaled = wm.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+        w, h = canvas.size
+        wm_x = (w - new_w) // 2
+
+        if text_position == "bottom":
+            # Text is at bottom -> branding sits elegantly at top center
+            wm_y = int(h * 0.045)
+        else:
+            # Text is at top -> branding sits at bottom center
+            wm_y = int(h * 0.955 - new_h)
+
+        canvas.alpha_composite(wm_scaled, dest=(wm_x, wm_y))
+    except Exception as e:
+        print(f"[COVER COMPOSITOR WARNING] Could not apply branding: {e}")
+
+    return canvas
+
+
+# ---------------------------------------------------------------------------
+# 6. Main Orchestrator: create_cover_frame
+# ---------------------------------------------------------------------------
+
+def create_cover_frame(
+    input_image: Union[str, Image.Image],
+    phrase: str,
+    output_path: Optional[str] = None,
+    target_size: Tuple[int, int] = (1080, 1080),
+    font_path: Optional[str] = None,
+    watermark_path: Optional[str] = None,
+    text_position: str = "auto",
+    apply_finish: bool = True
+) -> dict:
+    """
+    Composes a complete 1080x1080 Saba Bollywood Cover Frame:
+    1. Prepares & scales source image maintaining square aspect ratio.
+    2. Applies subtle visual finish pass (contrast, saturation, sharpness, vignette).
+    3. Evaluates smart text placement (or respects manual override).
+    4. Applies natural text backdrop gradient.
+    5. Renders high-impact cover phrase with emoji support.
+    6. Applies proportional Saba Bollywood branding at opposite pole.
+    7. Optionally saves high-quality JPEG or PNG.
+    """
+    # Load input image
+    if isinstance(input_image, str):
+        if not os.path.exists(input_image):
+            raise FileNotFoundError(f"Input image not found: {input_image}")
+        raw_img = Image.open(input_image)
+        raw_img.load()
+    else:
+        raw_img = input_image.copy()
+
+    # 1. Scale to square target size
+    canvas = prepare_source_image(raw_img, target_size=target_size)
+
+    # 2. Subtle visual finish
+    if apply_finish:
+        canvas = apply_visual_finish(canvas)
+
+    # 3. Placement analysis
+    placement_info = evaluate_placement_zones(canvas)
+    if text_position in ("top", "bottom"):
+        selected_position = text_position
+    else:
+        selected_position = placement_info["recommended"]
+
+    # 4. Natural text backdrop gradient
+    if phrase and phrase.strip():
+        text_grad = create_text_gradient(canvas.width, canvas.height, position=selected_position)
+        canvas.alpha_composite(text_grad)
+
+    # 5. Render cover text
+    resolved_font = font_path or DEFAULT_FONT_PATH
+    if not os.path.exists(resolved_font):
+        resolved_font = "fonts/Calistoga-Regular.ttf"
+
+    canvas = render_cover_text(canvas, phrase, resolved_font, position=selected_position)
+
+    # 6. Apply branding
+    resolved_wm = watermark_path if watermark_path is not None else DEFAULT_WATERMARK_PATH
+    canvas = apply_branding(canvas, resolved_wm, text_position=selected_position)
+
+    # 7. Convert to RGB for final output
+    final_output = canvas.convert("RGB")
+
+    # 8. Save if output_path specified
+    if output_path:
+        out_p = Path(output_path).resolve()
+        os.makedirs(out_p.parent, exist_ok=True)
+        ext = out_p.suffix.lower()
+        if ext in (".png",):
+            canvas.save(str(out_p), format="PNG")
+        else:
+            # Default to high-quality JPEG
+            final_output.save(str(out_p), format="JPEG", quality=95, subsampling=0)
+
+    return {
+        "output_image": final_output,
+        "output_path": output_path,
+        "size": final_output.size,
+        "phrase": phrase,
+        "selected_position": selected_position,
+        "placement_scores": placement_info["scores"],
+        "font_used": resolved_font,
+        "watermark_used": bool(resolved_wm and os.path.exists(resolved_wm))
+    }
+
+
+# ---------------------------------------------------------------------------
+# 7. Standalone CLI Entry Point
+# ---------------------------------------------------------------------------
+
+def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
+    parser = argparse.ArgumentParser(
+        description="Saba Bollywood Cover Frame Compositor - Phase 3"
+    )
+    parser.add_argument("--input", required=True, type=str, help="Path to input candidate image")
+    parser.add_argument("--phrase", required=True, type=str, help="Short cover phrase (e.g. 'SALMAN DID THIS 😳')")
+    parser.add_argument("--output", type=str, default="thumbnail_candidates/cover_test.jpg", help="Output file path (default: thumbnail_candidates/cover_test.jpg)")
+    parser.add_argument("--size", type=int, default=1080, help="Target square dimension (default: 1080)")
+    parser.add_argument("--position", type=str, default="auto", choices=["auto", "top", "bottom"], help="Text position (default: auto)")
+    parser.add_argument("--font", type=str, default=None, help="Path to custom font")
+    parser.add_argument("--watermark", type=str, default=None, help="Path to custom watermark asset")
+    parser.add_argument("--no-finish", action="store_true", help="Disable subtle visual finish pass")
+
+    args = parser.parse_args()
+
+    input_path = str(Path(args.input).resolve())
+    if not os.path.exists(input_path):
+        print(f"Error: Input image not found at '{input_path}'")
+        sys.exit(1)
+
+    result = create_cover_frame(
+        input_image=input_path,
+        phrase=args.phrase,
+        output_path=args.output,
+        target_size=(args.size, args.size),
+        font_path=args.font,
+        watermark_path=args.watermark,
+        text_position=args.position,
+        apply_finish=not args.no_finish
+    )
+
+    top_s = result["placement_scores"]["top"]["total_clutter"]
+    bot_s = result["placement_scores"]["bottom"]["total_clutter"]
+
+    print("=" * 60)
+    print("SABA BOLLYWOOD COVER FRAME COMPOSITOR - PHASE 3")
+    print("=" * 60)
+    print(f"Input Image:        {args.input}")
+    print(f"Output Image:       {args.output}")
+    print(f"Target Size:        {result['size'][0]} x {result['size'][1]}")
+    print(f"Phrase:             \"{result['phrase']}\"")
+    print(f"Selected Position:  {result['selected_position']} (top clutter: {top_s}, bottom clutter: {bot_s})")
+    print(f"Branding Applied:   {'Yes' if result['watermark_used'] else 'No'}")
+    print(f"Visual Finish:      {'No' if args.no_finish else 'Yes'}")
+    print(f"Status:             Saved {result['size'][0]}x{result['size'][1]} successfully")
+    print("=" * 60)
+
+if __name__ == "__main__":
+    main()
