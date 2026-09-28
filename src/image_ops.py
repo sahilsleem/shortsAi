@@ -105,26 +105,6 @@ def wrap_words(words, font, max_width, draw, pilmoji_context):
         
     return lines
 
-def measure_footprint(lines, font, pilmoji_context, draw):
-    if not lines:
-        return 0, 0
-    space_w = get_text_width(" ", font, pilmoji_context, draw)
-    max_w = 0
-    for line in lines:
-        w = sum(get_text_width(word, font, pilmoji_context, draw) for word, c in line) + space_w * max(0, len(line) - 1)
-        if w > max_w:
-            max_w = w
-            
-    if pilmoji_context:
-        _, lh = pilmoji_context.getsize("AydY~.", font=font)
-    else:
-        bbox = draw.textbbox((0,0), "AydY~.", font=font)
-        lh = bbox[3] - bbox[1]
-        
-    line_spacing = font.size * 0.1
-    total_h = (len(lines) * lh) + (max(0, len(lines) - 1) * line_spacing)
-    return max_w, total_h
-
 def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: int) -> int:
     img = Image.new("RGBA", (10, 10))
     draw = ImageDraw.Draw(img)
@@ -136,66 +116,53 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
     if not words:
         return int(82 * 0.8)
 
-    # 1. Calistoga Reference Layout
+    # Step 1: Find Calistoga's proven base size for this caption.
+    # This is the existing working algorithm that produces correct visual results.
     CALISTOGA_PATH = str(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts", "Calistoga-Regular.ttf"))
     if not os.path.exists(CALISTOGA_PATH):
         CALISTOGA_PATH = "fonts/Calistoga-Regular.ttf"
 
-    cal_fs = 82
-    cal_font = None
+    cal_base_size = 38  # fallback
     for target_lines in range(1, max_lines + 1):
         found = False
         for fs in range(82, 37, -2):
             try:
                 font = ImageFont.truetype(CALISTOGA_PATH, fs)
             except IOError:
-                font = ImageFont.load_default()
+                continue
             lines = wrap_words(words, font, max_width, draw, pilmoji_context)
             if lines is not None and len(lines) <= target_lines:
-                cal_fs = fs
-                cal_font = font
+                cal_base_size = fs
                 found = True
                 break
         if found:
             break
-            
-    if cal_font is None:
-        cal_fs = 38
-        cal_font = ImageFont.truetype(CALISTOGA_PATH, 38)
 
-    # Calculate Calistoga's visual glyph height
-    cal_bbox = draw.textbbox((0, 0), "AydY~.", font=cal_font)
-    target_h = cal_bbox[3] - cal_bbox[1]
+    # Step 2: Use that exact same point size as the starting size for the selected font.
+    # Do NOT shrink it. Do NOT try to match line counts or glyph metrics.
+    base_size = cal_base_size
 
-    # If the requested font is Calistoga, just apply the 20% reduction and return
-    if os.path.normpath(font_path) == os.path.normpath(CALISTOGA_PATH):
-        return int(cal_fs * 0.8)
+    # Step 3: Only reduce if the selected font physically cannot fit
+    # (i.e. a single word exceeds 936px at this size).
+    try:
+        alt_font = ImageFont.truetype(font_path, base_size)
+    except IOError:
+        return int(base_size * 0.8)
 
-    # 2. Dynamic Calibration for Alternative Fonts
-    best_fs = 38
-    best_diff = float('inf')
-    
-    # Alternative fonts may need to scale up dramatically to match Calistoga's massive x-height
-    for fs in range(250, 20, -1):
-        try:
-            alt_font = ImageFont.truetype(font_path, fs)
-        except IOError:
-            continue
-            
-        alt_bbox = draw.textbbox((0, 0), "AydY~.", font=alt_font)
-        alt_h = alt_bbox[3] - alt_bbox[1]
-        
-        diff = abs(alt_h - target_h)
-        if diff < best_diff:
-            # Ensure this visually matched size doesn't fail the max_width physical boundary
+    result = wrap_words(words, alt_font, max_width, draw, pilmoji_context)
+    if result is None:
+        # A word is too wide at this size — shrink until it fits
+        for fs in range(base_size - 1, 19, -1):
+            try:
+                alt_font = ImageFont.truetype(font_path, fs)
+            except IOError:
+                continue
             if wrap_words(words, alt_font, max_width, draw, pilmoji_context) is not None:
-                best_diff = diff
-                best_fs = fs
-                # If we hit an exact match, we can stop early
-                if diff == 0:
-                    break
+                base_size = fs
+                break
 
-    return int(best_fs * 0.8)
+    # Step 4: Apply the existing 20% reduction exactly once
+    return int(base_size * 0.8)
 
 def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_width: int):
     draw = ImageDraw.Draw(img)
