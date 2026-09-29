@@ -1513,3 +1513,13 @@ def test_validate_description_rules():
     is_valid, msg = validate_content_package(pkg)
     assert not is_valid
     assert 'missing the exact credit block' in msg
+
+
+def test_index_html_js_syntax_check():
+    """Test 56: Ensure index.html does not contain syntax-breaking unescaped newlines in JS double quotes."""
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        html = f.read()
+
+    # We specifically look for the broken string pattern that caused the regression
+    assert 'initialDesc = currentSelectedTitle + (initialDesc ? "\\\\n\\\\n" + initialDesc : "");' in html
+    assert 'initialDesc ? "\\n\\n"' not in html

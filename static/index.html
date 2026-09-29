@@ -835,9 +835,7 @@
                         currentSelectedTitle = matchingTitle;
                         if (publishingTitleInput) publishingTitleInput.value = matchingTitle;
                     } else {
-                        initialDesc = currentSelectedTitle + (initialDesc ? "
-
-" + initialDesc : "");
+                        initialDesc = currentSelectedTitle + (initialDesc ? "\\n\\n" + initialDesc : "");
                     }
                 }
                 publishingDescription.value = initialDesc;
