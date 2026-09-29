@@ -3,9 +3,9 @@ src/ai_router.py - Multi-Provider AI Fallback System for Saba Bollywood Content 
 
 Provider Chain:
 1. Gemini (primary)
-2. Groq (Llama 3.3 70B via OpenAI-compatible endpoint)
+2. Groq (GPT OSS 120B via OpenAI-compatible endpoint)
 3. Cerebras (Llama 3.3 70B via OpenAI-compatible endpoint)
-4. OpenRouter (fallback router / free model tier)
+4. OpenRouter (Llama 3.3 70B Instruct via OpenAI-compatible endpoint)
 
 Features:
 - Standard library urllib only (zero third-party AI runtime dependencies).
@@ -783,14 +783,14 @@ class OpenAICompatibleProvider(BaseAIProvider):
 
 
 class GroqProvider(OpenAICompatibleProvider):
-    """Adapter for Groq (default: llama-3.3-70b-versatile)."""
+    """Adapter for Groq (default: openai/gpt-oss-120b)."""
     def __init__(self):
         super().__init__(
             name="groq",
             endpoint="https://api.groq.com/openai/v1/chat/completions",
             env_key_name="GROQ_API_KEY",
             env_model_name="GROQ_MODEL",
-            default_model="llama-3.3-70b-versatile",
+            default_model="openai/gpt-oss-120b",
             max_tokens=4096
         )
 
@@ -809,14 +809,14 @@ class CerebrasProvider(OpenAICompatibleProvider):
 
 
 class OpenRouterProvider(OpenAICompatibleProvider):
-    """Adapter for OpenRouter (default: openrouter/auto)."""
+    """Adapter for OpenRouter (default: meta-llama/llama-3.3-70b-instruct)."""
     def __init__(self):
         super().__init__(
             name="openrouter",
             endpoint="https://openrouter.ai/api/v1/chat/completions",
             env_key_name="OPENROUTER_API_KEY",
             env_model_name="OPENROUTER_MODEL",
-            default_model="openrouter/auto",
+            default_model="meta-llama/llama-3.3-70b-instruct",
             extra_headers={
                 "HTTP-Referer": "https://github.com/sahilsleem/shortsAi",
                 "X-Title": "ShortsAI"

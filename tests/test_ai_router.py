@@ -52,6 +52,9 @@ from src.ai_router import (
     DEFAULT_PROVIDER_ORDER,
     sanitize_log_text,
     format_structural_summary,
+    GroqProvider,
+    CerebrasProvider,
+    OpenRouterProvider,
 )
 
 
@@ -933,3 +936,57 @@ def test_openrouter_malformed_empty_content_logs_structural_summary(monkeypatch,
     assert "choices_count=1" in captured.out
     assert "content_len=0" in captured.out
     assert "finish_reason='stop'" in captured.out
+
+
+def test_default_model_names_and_env_overrides(monkeypatch):
+    """Test 36: Verify default models for Groq, OpenRouter, and Cerebras and their env overrides."""
+    groq = GroqProvider()
+    assert groq.default_model == "openai/gpt-oss-120b"
+    assert groq.env_model_name == "GROQ_MODEL"
+
+    openrouter = OpenRouterProvider()
+    assert openrouter.default_model == "meta-llama/llama-3.3-70b-instruct"
+    assert openrouter.env_model_name == "OPENROUTER_MODEL"
+
+    cerebras = CerebrasProvider()
+    assert cerebras.default_model == "llama-3.3-70b"
+    assert cerebras.env_model_name == "CEREBRAS_MODEL"
+
+    # Verify environment overrides are used in requests
+    captured_payloads = []
+
+    def mock_urlopen(req, timeout=None):
+        payload = json.loads(req.data.decode("utf-8"))
+        captured_payloads.append(payload)
+        resp_data = {
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {"role": "assistant", "content": json.dumps(make_valid_package("EnvModel"))}
+            }]
+        }
+        return io.BytesIO(json.dumps(resp_data).encode("utf-8"))
+
+    # Test Groq with custom GROQ_MODEL
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    monkeypatch.setenv("GROQ_MODEL", "custom-groq-model")
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    res = groq.generate("test context")
+    assert captured_payloads[-1]["model"] == "custom-groq-model"
+
+    # Test Groq without GROQ_MODEL (falls back to default openai/gpt-oss-120b)
+    monkeypatch.delenv("GROQ_MODEL", raising=False)
+    res = groq.generate("test context")
+    assert captured_payloads[-1]["model"] == "openai/gpt-oss-120b"
+
+    # Test OpenRouter with custom OPENROUTER_MODEL
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setenv("OPENROUTER_MODEL", "custom-openrouter-model")
+
+    res = openrouter.generate("test context")
+    assert captured_payloads[-1]["model"] == "custom-openrouter-model"
+
+    # Test OpenRouter without OPENROUTER_MODEL (falls back to default meta-llama/llama-3.3-70b-instruct)
+    monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
+    res = openrouter.generate("test context")
+    assert captured_payloads[-1]["model"] == "meta-llama/llama-3.3-70b-instruct"
