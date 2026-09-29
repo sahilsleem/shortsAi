@@ -611,3 +611,15 @@ def test_mobile_creator_redesign_structure():
     assert 'id="result-section"' in html
     assert 'id="result-video"' in html
     assert 'id="publishing-section"' in html
+
+def test_compact_mobile_preview_viewport():
+    """Verify that the preview viewport is compact and constrained to prevent page height explosion."""
+    from pathlib import Path
+    html = Path("static/index.html").read_text(encoding="utf-8")
+
+    assert 'class="preview-viewport"' in html
+    assert 'id="preview-viewport"' in html
+    assert 'clamp(220px, 35vh, 280px)' in html
+    assert 'fitPreviewContainer' in html
+    assert 'previewContainer.onmousedown = startDrag' in html
+    assert 'previewContainer.ontouchstart = startDrag' in html
