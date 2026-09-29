@@ -238,3 +238,269 @@ def render_curiosity_video(
     ])
     print("Running Curiosity Video FFmpeg command")
     subprocess.run(cmd, check=True)
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Saba Bollywood Cover Frame Pipeline
+# ---------------------------------------------------------------------------
+
+def get_audio_properties(video_path: str) -> dict:
+    """Query ffprobe for audio stream properties (sample_rate, channels, channel_layout, codec_name)."""
+    cmd = [get_ffprobe_path(), "-v", "quiet", "-print_format", "json", "-show_streams", video_path]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        for stream in data.get("streams", []):
+            if stream.get("codec_type") == "audio":
+                sample_rate = int(stream.get("sample_rate", 44100))
+                channels = int(stream.get("channels", 2))
+                layout = stream.get("channel_layout", "stereo" if channels == 2 else ("mono" if channels == 1 else "stereo"))
+                codec_name = stream.get("codec_name", "aac")
+                return {
+                    "has_audio": True,
+                    "sample_rate": sample_rate,
+                    "channels": channels,
+                    "channel_layout": layout,
+                    "codec_name": codec_name
+                }
+    except Exception:
+        pass
+    return {
+        "has_audio": False,
+        "sample_rate": 44100,
+        "channels": 2,
+        "channel_layout": "stereo",
+        "codec_name": "aac"
+    }
+
+
+def create_cover_video_segment(
+    cover_image_path: str,
+    output_segment_path: str,
+    duration: float = 0.100,
+    audio_props: dict = None
+) -> str:
+    """
+    Renders an exact duration-controlled (default 0.100s) cover video segment
+    on a 1080x1920 white canvas with the cover image scaled to 1002x1002 at x=39, y=420.
+    Produces silent audio matched to audio_props if audio is present.
+    """
+    if audio_props is None:
+        audio_props = {"has_audio": True, "sample_rate": 44100, "channel_layout": "stereo", "channels": 2}
+
+    has_audio = audio_props.get("has_audio", False)
+    sample_rate = audio_props.get("sample_rate", 44100)
+    channel_layout = audio_props.get("channel_layout", "stereo")
+
+    cmd = [get_ffmpeg_path(), "-y"]
+    cmd.extend(["-loop", "1", "-t", f"{duration:.3f}", "-i", cover_image_path])
+
+    if has_audio:
+        cmd.extend([
+            "-f", "lavfi", "-t", f"{duration:.3f}",
+            "-i", f"anullsrc=r={sample_rate}:cl={channel_layout}"
+        ])
+
+    fc = [
+        f"[0:v]scale=1002:1002[c_img];",
+        f"color=c=white:s=1080x1920:d={duration:.3f}:r=30[base];",
+        f"[base][c_img]overlay=39:420:eof_action=pass,trim=duration={duration:.3f},setpts=PTS-STARTPTS[outv]"
+    ]
+
+    if has_audio:
+        fc.append(f";[1:a]atrim=duration={duration:.3f},asetpts=PTS-STARTPTS[outa]")
+        maps = ["-map", "[outv]", "-map", "[outa]"]
+    else:
+        maps = ["-map", "[outv]"]
+
+    cmd.extend([
+        "-filter_complex", "".join(fc),
+        *maps,
+        "-t", f"{duration:.3f}",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+        "-pix_fmt", "yuv420p", "-r", "30"
+    ])
+
+    if has_audio:
+        cmd.extend(["-c:a", "aac", "-b:a", "192k", "-ar", str(sample_rate)])
+
+    cmd.append(output_segment_path)
+    print(f"Creating Cover Video Segment (duration={duration:.3f}s)")
+    subprocess.run(cmd, check=True)
+    return output_segment_path
+
+
+def concat_video_with_cover(
+    main_video_path: str,
+    cover_segment_path: str,
+    output_video_path: str,
+    has_audio: bool = True
+) -> None:
+    """Concatenates main video and cover segment with audio synchronization."""
+    cmd = [
+        get_ffmpeg_path(), "-y",
+        "-i", main_video_path,
+        "-i", cover_segment_path
+    ]
+
+    if has_audio:
+        fc = "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]"
+        maps = ["-map", "[outv]", "-map", "[outa]"]
+        codec_args = [
+            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+            "-pix_fmt", "yuv420p", "-r", "30",
+            "-c:a", "aac", "-b:a", "192k"
+        ]
+    else:
+        fc = "[0:v][1:v]concat=n=2:v=1:a=0[outv]"
+        maps = ["-map", "[outv]"]
+        codec_args = [
+            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+            "-pix_fmt", "yuv420p", "-r", "30"
+        ]
+
+    cmd.extend([
+        "-filter_complex", fc,
+        *maps,
+        *codec_args,
+        output_video_path
+    ])
+    print("Concatenating Main Video with Cover Segment")
+    subprocess.run(cmd, check=True)
+
+
+def append_cover_frame(
+    source_video: str,
+    rendered_video: str,
+    output_video: str,
+    thumbnail_phrase: str,
+    start_time: float,
+    end_time: float,
+    crop_x: int,
+    crop_y: int,
+    crop_size: int,
+    mode: str = "main",
+    cut_time: float = None,
+    enhance: bool = False,
+    cover_image_path: str = None,
+    duration: float = 0.100
+) -> dict:
+    """
+    Orchestrates the Phase 5 cover frame pipeline:
+    1. Validates thumbnail phrase (skips safely if missing).
+    2. Runs frame selector on original source footage to find best candidate frame.
+    3. Extracts full-resolution candidate frame.
+    4. Composes Saba Bollywood cover frame with thumbnail phrase.
+    5. Saves cover artwork to disk.
+    6. Generates exact duration-controlled (0.100s) cover video segment with matched audio properties.
+    7. Appends cover segment to the rendered Short.
+    8. Validates output dimensions and duration with ffprobe.
+    9. Atomically updates output_video with complete failure safety.
+    """
+    if not thumbnail_phrase or not thumbnail_phrase.strip():
+        print("[COVER PIPELINE] No thumbnail phrase available. Skipping cover frame safely.")
+        if rendered_video != output_video and os.path.exists(rendered_video):
+            shutil.copyfile(rendered_video, output_video)
+        return {"success": False, "reason": "no_thumbnail_phrase", "output_video": output_video}
+
+    work_dir = Path(cover_image_path).parent if cover_image_path else Path(rendered_video).parent
+    temp_cand_dir = work_dir / "cover_candidates"
+    os.makedirs(temp_cand_dir, exist_ok=True)
+    if not cover_image_path:
+        cover_image_path = str(work_dir / "output_cover.jpg")
+    cover_segment_path = str(work_dir / "cover_segment.mp4")
+    temp_final_path = str(work_dir / "temp_final_with_cover.mp4")
+
+    try:
+        # Step 2: Frame Selection from original source video
+        from src.frame_selector import run_frame_selection_diagnostic, extract_full_res_frame
+        report = run_frame_selection_diagnostic(
+            source_video=source_video,
+            start_time=start_time,
+            end_time=end_time,
+            crop_x=crop_x,
+            crop_y=crop_y,
+            crop_size=crop_size,
+            mode=mode,
+            cut_time=cut_time,
+            output_dir=str(temp_cand_dir),
+            enhance=enhance
+        )
+        selected = report.get("selected_candidate")
+        if not selected:
+            print("[COVER PIPELINE] Frame selector found no valid candidate. Skipping safely.")
+            if rendered_video != output_video and os.path.exists(rendered_video):
+                shutil.copyfile(rendered_video, output_video)
+            return {"success": False, "reason": "no_candidate_frame", "output_video": output_video}
+
+        best_ts = float(selected["timestamp"])
+
+        # Step 3: Extract full-resolution frame
+        full_frame = extract_full_res_frame(
+            source_video=source_video,
+            timestamp=best_ts,
+            crop_x=crop_x,
+            crop_y=crop_y,
+            crop_size=crop_size,
+            enhance=enhance
+        )
+
+        # Step 4: Compose Cover Artwork
+        from src.cover_compositor import create_cover_frame
+        comp_result = create_cover_frame(
+            input_image=full_frame,
+            phrase=thumbnail_phrase,
+            output_path=cover_image_path
+        )
+
+        # Step 5: Inspect Audio Properties of Main Video
+        audio_props = get_audio_properties(rendered_video)
+
+        # Step 6: Create 0.100s Cover Video Segment
+        create_cover_video_segment(
+            cover_image_path=cover_image_path,
+            output_segment_path=cover_segment_path,
+            duration=duration,
+            audio_props=audio_props
+        )
+
+        # Step 7: Concatenate Main Video + Cover Segment
+        concat_video_with_cover(
+            main_video_path=rendered_video,
+            cover_segment_path=cover_segment_path,
+            output_video_path=temp_final_path,
+            has_audio=audio_props["has_audio"]
+        )
+
+        # Step 8: Validate output dimensions
+        final_w, final_h = get_video_dimensions(temp_final_path)
+        if (final_w, final_h) != (1080, 1920):
+            raise ValueError(f"Output dimensions mismatch: expected (1080, 1920), got ({final_w}, {final_h})")
+
+        # Step 9: Atomically replace output video
+        if os.path.exists(temp_final_path) and os.path.getsize(temp_final_path) > 0:
+            if os.path.exists(output_video) and output_video == rendered_video:
+                os.remove(output_video)
+            shutil.move(temp_final_path, output_video)
+
+        return {
+            "success": True,
+            "output_video": output_video,
+            "cover_image_path": cover_image_path,
+            "cover_duration": duration,
+            "best_timestamp": best_ts,
+            "selected_phrase": thumbnail_phrase,
+            "audio_properties": audio_props,
+            "placement_scores": comp_result.get("placement_scores")
+        }
+
+    except Exception as e:
+        print(f"[COVER PIPELINE ERROR] Cover frame generation failed: {e}. Preserving normal render.")
+        if rendered_video != output_video and os.path.exists(rendered_video):
+            shutil.copyfile(rendered_video, output_video)
+        return {
+            "success": False,
+            "error": str(e),
+            "output_video": output_video if os.path.exists(output_video) else rendered_video
+        }
+

@@ -12,7 +12,7 @@ from email import message_from_bytes
 
 from src.config import CaptionData
 from src.image_ops import generate_text_overlay, compute_best_font_size
-from src.video_ops import render_main_video, render_curiosity_video, get_ffprobe_path
+from src.video_ops import render_main_video, render_curiosity_video, get_ffprobe_path, append_cover_frame
 from src.gemini_caption import generate_captions, GeminiError, GeminiConfigError, GeminiQuotaError, GeminiAPIError
 
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024
@@ -57,6 +57,18 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     self.wfile.write(f.read())
             else:
                 self.send_error(404, 'File Not Found')
+        elif self.path in ('/output_cover.jpg', '/cover', '/download_cover'):
+            cover_path = Path("working/output_cover.jpg").resolve()
+            if cover_path.exists() and cover_path.is_file():
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/jpeg')
+                self.send_header('Content-Disposition', 'attachment; filename="output_cover.jpg"')
+                self.send_header('Content-Length', str(cover_path.stat().st_size))
+                self.end_headers()
+                with open(cover_path, 'rb') as f:
+                    shutil.copyfileobj(f, self.wfile)
+            else:
+                self.send_error(404, "Cover image not found")
         else:
             self.send_error(404, 'File Not Found')
 
@@ -139,6 +151,10 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                 if audio_mode not in ('original', 'enhanced', 'voice_focus'):
                     audio_mode = 'enhanced' if enhance else 'original'
                 
+                cover_enabled_str = form_data.get('cover_enabled', 'true').lower()
+                cover_enabled = cover_enabled_str in ('true', '1', 'yes', 'on')
+                thumbnail_phrase = form_data.get('thumbnail_phrase', '').strip()
+                
                 req_id = str(uuid.uuid4())
                 workspace = Path(f"working/{req_id}").resolve()
                 os.makedirs(workspace, exist_ok=True)
@@ -199,6 +215,29 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                             enhance=enhance, audio_mode=audio_mode
                         )
                         
+                    # Phase 5: Optional Saba Bollywood Cover Frame appending
+                    if cover_enabled and os.path.exists(output_path):
+                        cover_img_path = str(workspace / "output_cover.jpg")
+                        cover_res = append_cover_frame(
+                            source_video=str(input_path),
+                            rendered_video=str(output_path),
+                            output_video=str(output_path),
+                            thumbnail_phrase=thumbnail_phrase,
+                            start_time=start_time,
+                            end_time=end_time,
+                            crop_x=crop_x,
+                            crop_y=crop_y,
+                            crop_size=crop_size,
+                            mode=mode,
+                            cut_time=cut_time,
+                            enhance=enhance,
+                            cover_image_path=cover_img_path
+                        )
+                        if cover_res.get("success") and os.path.exists(cover_img_path):
+                            persistent_cover = Path("working/output_cover.jpg").resolve()
+                            os.makedirs(persistent_cover.parent, exist_ok=True)
+                            shutil.copyfile(cover_img_path, persistent_cover)
+                    
                     if os.path.exists(output_path):
                         self.send_response(200)
                         self.send_header('Content-Type', 'video/mp4')

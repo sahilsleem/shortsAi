@@ -448,6 +448,17 @@
                 </div>
             </div>
             
+            <div class="section-label">Saba Bollywood Cover</div>
+            <div class="card">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Saba Bollywood Cover Frame</label>
+                    <div class="toggle-group" id="cover-toggle">
+                        <button type="button" class="toggle-btn" data-val="off">OFF</button>
+                        <button type="button" class="toggle-btn active" data-val="on">ON</button>
+                    </div>
+                </div>
+            </div>
+            
             <button class="btn" id="btn-generate">Render Video</button>
             <div id="status-message" style="margin-top:12px; text-align:center; min-height: 20px;"></div>
         </div>
@@ -456,6 +467,7 @@
             <div class="result-title">Your video is ready</div>
             <video id="result-video" controls playsinline></video>
             <button class="btn" id="btn-download">Download Video</button>
+            <a id="btn-download-cover" class="toggle-btn" href="/output_cover.jpg" download="output_cover.jpg" style="display:none; text-align:center; padding: 12px; margin-top: 8px; text-decoration: none; font-weight: 600; font-size: 14px; background: #f1f5f9; color: var(--text-main); border-radius: 8px;">🖼 Download Cover Artwork</a>
         </div>
     </div>
 
@@ -515,6 +527,19 @@
                 audioMode = btn.dataset.val;
             };
         });
+
+        // Saba Bollywood Cover Toggle Logic
+        let coverEnabled = true;
+        const coverToggle = document.getElementById('cover-toggle');
+        if (coverToggle) {
+            coverToggle.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.onclick = () => {
+                    coverToggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    coverEnabled = (btn.dataset.val === 'on');
+                };
+            });
+        }
 
         // Gemini Caption Writer Logic
         const geminiContext = document.getElementById('gemini-context');
@@ -882,6 +907,9 @@
             fd.append('caption_curiosity_emoji', document.getElementById('caption-emoji-curiosity').value);
             fd.append('enhance', enhanceEnabled ? 'true' : 'false');
             fd.append('audio_mode', audioMode);
+            fd.append('cover_enabled', coverEnabled ? 'true' : 'false');
+            const thumbPhrase = (currentGeneratedPair && currentGeneratedPair.thumbnail_phrase) ? currentGeneratedPair.thumbnail_phrase : '';
+            fd.append('thumbnail_phrase', thumbPhrase);
             
             try {
                 const res = await fetch('/render', { method: 'POST', body: fd });
@@ -891,6 +919,11 @@
                 document.getElementById('result-video').src = url;
                 resultSection.style.display = 'block';
                 
+                const btnDownloadCover = document.getElementById('btn-download-cover');
+                if (btnDownloadCover) {
+                    btnDownloadCover.style.display = (coverEnabled && thumbPhrase) ? 'block' : 'none';
+                }
+
                 // Scroll to result smoothly
                 setTimeout(() => {
                     resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
