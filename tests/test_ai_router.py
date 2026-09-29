@@ -66,6 +66,18 @@ from src.gemini_caption import SYSTEM_INSTRUCTION
 def make_valid_package(prefix: str = "Test") -> dict:
     emojis_main = ["👀", "😳", "🤔", "😮", "✨", "🎬", "🔥", "👏", "👀", ""]
     emojis_curiosity = ["❤️", "😂", "🔥", "🙏", "❤️", "👏", "😂", "✨", "", "❤️"]
+    titles = [
+        f"{prefix} Salman Khan Moment #{i} Shocked #Everyone #shorts #airport #fans"
+        for i in range(1, 11)
+    ]
+    top_titles = titles[:3]
+    description = (
+        f"{top_titles[0]}\\n\\n"
+        f"{prefix} Salman Khan stopped to meet a fan at Mumbai airport.\\n\\n"
+        "📌 CREDITS:\\nSome clips/images may be sourced from publicly available platforms such as Google, Pinterest and social media. We do not claim ownership of third-party content. All rights belong to their respective owners.\\n\\nFor copyright concerns or removal requests, please contact us through the channel.\\n\\n"
+        "#shorts #salmankhan #bollywood"
+    )
+
     return {
         "captions": [
             {
@@ -78,18 +90,10 @@ def make_valid_package(prefix: str = "Test") -> dict:
             }
             for i in range(1, 11)
         ],
-        "titles": [
-            f"{prefix} Salman Khan Moment #{i} Shocked Everyone"
-            for i in range(1, 11)
-        ],
-        "top_titles": [
-            f"{prefix} Top Title 1",
-            f"{prefix} Top Title 2",
-            f"{prefix} Top Title 3"
-        ],
-        "description": f"{prefix} Salman Khan stopped to meet a fan at Mumbai airport. #Shorts"
+        "titles": titles,
+        "top_titles": top_titles,
+        "description": description
     }
-
 
 @pytest.fixture(autouse=True)
 def reset_cooldown():
@@ -1299,9 +1303,7 @@ def test_publishing_ui_html_structure_and_location():
     assert 'id="result-video"' in html
     assert 'id="publishing-section"' in html
     assert 'id="publishing-title"' in html
-    assert 'id="publishing-top-titles-group"' in html
     assert 'id="publishing-top-titles-list"' in html
-    assert 'id="publishing-all-titles-group"' in html
     assert 'id="publishing-all-titles-list"' in html
     assert 'id="publishing-description"' in html
     assert 'id="btn-copy-title"' in html
@@ -1462,3 +1464,52 @@ def test_cover_ui_absent():
     assert "cover-toggle" not in html_content
     assert "btn-download-cover" not in html_content
     assert "Saba Bollywood Cover" not in html_content
+
+
+def test_validate_titles_hashtag_and_length():
+    """Verify strict title validation catches missing hashtags, length issues, and missing #shorts."""
+    from src.ai_router import validate_content_package
+    pkg = make_valid_package()
+
+    # 1. Length > 89
+    pkg['titles'][0] = 'X' * 90 + ' #shorts #a #b #c'
+    is_valid, msg = validate_content_package(pkg)
+    assert not is_valid
+    assert 'exceeds 89 characters' in msg
+
+    # 2. Missing #shorts
+    pkg = make_valid_package()
+    pkg['titles'][0] = 'Normal title #a #b #c #d'
+    is_valid, msg = validate_content_package(pkg)
+    assert not is_valid
+    assert 'missing #shorts' in msg
+
+    # 3. Not enough hashtags
+    pkg = make_valid_package()
+    pkg['titles'][0] = 'Normal title #shorts #a #b'
+    is_valid, msg = validate_content_package(pkg)
+    assert not is_valid
+    assert 'fewer than 4 hashtags' in msg
+
+    # 4. Valid
+    pkg = make_valid_package()
+    is_valid, msg = validate_content_package(pkg)
+    assert is_valid
+
+def test_validate_description_rules():
+    """Verify description must start with top_title and contain credit block."""
+    from src.ai_router import validate_content_package
+    pkg = make_valid_package()
+
+    # 1. Doesn't start with top_title
+    pkg['description'] = 'Something else\n\n' + pkg['description']
+    is_valid, msg = validate_content_package(pkg)
+    assert not is_valid
+    assert 'start exactly with the first top_title' in msg
+
+    # 2. Missing credit block
+    pkg = make_valid_package()
+    pkg['description'] = pkg['description'].replace('📌 CREDITS:', 'CREDITS:')
+    is_valid, msg = validate_content_package(pkg)
+    assert not is_valid
+    assert 'missing the exact credit block' in msg

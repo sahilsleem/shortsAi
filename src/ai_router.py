@@ -220,13 +220,40 @@ Generate a complete social publishing package for YouTube Shorts:
      Use simple everyday English (saw, noticed, stopped, smiled, looked back, walked over, asked, waved, etc.).
      Create emotion through action rather than telling the viewer how to feel.
      NEVER use robotic news clichés ("heartwarming gesture", "captured attention", "left fans stunned", "proceeded to", "netizens", "was seen", "made headlines", "social media went into a frenzy").
-2. "titles": Exactly 10 punchy, viral YouTube Shorts titles (emotional, curiosity-driven, factual, simple English).
-3. "top_titles": Exactly 3 best recommended title selections from the 10 titles.
-4. "description": An engaging 2-4 sentence YouTube Shorts description sticking strictly to context facts, ending with #Shorts and relevant context hashtags.
+2. "titles": Exactly 10 distinct, viral YouTube Shorts title options.
+   - Natural and human-sounding, using simple everyday English.
+   - Feel like something a real social-media creator would write.
+   - Create curiosity without falsely hiding or inventing information.
+   - Based strictly on the supplied context (use the relevant person's/name naturally when appropriate).
+   - Use 1–3 relevant emojis where they genuinely fit.
+   - Include #shorts and at least 3 other relevant hashtags (at least 4 hashtags total).
+   - Never use irrelevant hashtags just to reach the count.
+   - CRITICAL: Stay at or below 89 characters INCLUDING spaces, punctuation, emojis, and hashtags.
+   - Avoid robotic/news/corporate wording and generic AI phrases (e.g. "left fans stunned", "captured attention", "made headlines", "netizens", "in a touching moment").
+   - Do not invent dialogue, reactions, motives, relationships, locations, dates, or facts.
+   - Use genuinely different angles (Curiosity, Emotional, Wholesome, Funny, Awkward, Unexpected, Fan perspective, Action-focused, Contrast, Direct hook).
+3. "top_titles": Exactly 3 recommended title selections from the 10 generated titles.
+4. "description": ONE complete, ready-to-use YouTube Shorts description.
+   - Start the description EXACTLY with the first title from your top_titles list.
+   - Be friendly, natural, concise, and easy to read.
+   - Explain what happens in the video using only the supplied context.
+   - Sound like a normal creator wrote it (avoid corporate, formal, robotic, or overly dramatic language).
+   - Do not mention ShortsAI, server volume, server capacity, backend volume, rendering volume, or any technical/server-related wording.
+   - Do not contain any channel-specific identity or forced Bollywood hashtags.
+   - Do not invent facts or hashtags unrelated to the content.
+   - Immediately after the natural description, include this EXACT credit block:
+
+📌 CREDITS:
+Some clips/images may be sourced from publicly available platforms such as Google, Pinterest and social media. We do not claim ownership of third-party content. All rights belong to their respective owners.
+
+For copyright concerns or removal requests, please contact us through the channel.
+
+   - Finally, add #shorts plus relevant hashtags based on the actual video context.
+   - The final description MUST be one continuous string, formatted with newlines (\n), ready to copy.
 
 FINAL HUMAN TEST:
 Before returning the package, internally ask:
-"Would a real social media creator actually write this?"
+"Would a real social media creator actually write this? Are the titles strictly under 89 characters? Does the description start with the first recommended title?"
 If it sounds like a newspaper, generic AI, or overly complicated English, or if all ten options sound almost identical, rewrite them.
 
 OUTPUT FORMAT:
@@ -247,7 +274,7 @@ Respond with ONLY valid JSON with this exact schema:
   "top_titles": [
     "Top Title 1", "Top Title 2", "Top Title 3"
   ],
-  "description": "Engaging context-accurate description text here... #Shorts"
+  "description": "First Top Title\n\nEngaging context-accurate description text here...\n\n📌 CREDITS:\nSome clips/images may be sourced from publicly available platforms such as Google, Pinterest and social media. We do not claim ownership of third-party content. All rights belong to their respective owners.\n\nFor copyright concerns or removal requests, please contact us through the channel.\n\n#shorts #hashtag2 #hashtag3"
 }"""
 
 
@@ -365,6 +392,13 @@ def validate_content_package(package: dict) -> Tuple[bool, str]:
     for idx, title in enumerate(titles):
         if not isinstance(title, str) or not title.strip():
             return False, f"Title #{idx+1} is empty or not a string"
+        t_lower = title.lower()
+        if "#shorts" not in t_lower:
+            return False, f"Title #{idx+1} is missing #shorts"
+        if title.count("#") < 4:
+            return False, f"Title #{idx+1} has fewer than 4 hashtags"
+        if len(title) > 89:
+            return False, f"Title #{idx+1} exceeds 89 characters (length: {len(title)})"
 
     # 3. Top titles: exactly 3
     top_titles = package.get("top_titles")
@@ -380,6 +414,12 @@ def validate_content_package(package: dict) -> Tuple[bool, str]:
     desc = str(package.get("description", "")).strip()
     if not desc:
         return False, "Missing or empty 'description'"
+    if top_titles and not desc.startswith(top_titles[0]):
+        return False, "Description does not start exactly with the first top_title"
+    if "📌 CREDITS:" not in desc:
+        return False, "Description is missing the exact credit block"
+    if "#shorts" not in desc.lower():
+        return False, "Description is missing #shorts"
 
     return True, ""
 
