@@ -371,6 +371,10 @@
                         <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Curiosity Caption</div>
                         <div id="gemini-preview-curiosity" style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-top: 3px; line-height: 1.4;"></div>
                     </div>
+                    <div id="gemini-preview-thumbnail-container" style="margin-bottom: 14px; display: none;">
+                        <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Cover Thumbnail Phrase</div>
+                        <div id="gemini-preview-thumbnail" style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-top: 3px; line-height: 1.4;"></div>
+                    </div>
                     <div style="display: flex; gap: 10px;">
                         <button type="button" class="toggle-btn" id="btn-gemini-retry" style="flex: 1; padding: 10px; background: #e2e8f0; color: var(--text-main); font-weight: 600; font-size: 14px; border-radius: 8px;">↻ Retry</button>
                         <button type="button" class="toggle-btn" id="btn-gemini-use" style="flex: 1; padding: 10px; background: #0d9488; color: #ffffff; font-weight: 600; font-size: 14px; border-radius: 8px;">✓ Use</button>
@@ -519,6 +523,8 @@
         const geminiResultCard = document.getElementById('gemini-result-card');
         const geminiPreviewMain = document.getElementById('gemini-preview-main');
         const geminiPreviewCuriosity = document.getElementById('gemini-preview-curiosity');
+        const geminiPreviewThumbnailContainer = document.getElementById('gemini-preview-thumbnail-container');
+        const geminiPreviewThumbnail = document.getElementById('gemini-preview-thumbnail');
         const btnGeminiRetry = document.getElementById('btn-gemini-retry');
         const btnGeminiUse = document.getElementById('btn-gemini-use');
 
@@ -557,11 +563,18 @@
                 currentGeneratedPair = data;
                 recentGenerations.push({
                     main_caption: data.main_caption,
-                    curiosity_caption: data.curiosity_caption
+                    curiosity_caption: data.curiosity_caption,
+                    thumbnail_phrase: data.thumbnail_phrase || ""
                 });
 
                 geminiPreviewMain.innerText = data.main_caption;
                 geminiPreviewCuriosity.innerText = data.curiosity_caption;
+                if (data.thumbnail_phrase) {
+                    geminiPreviewThumbnail.innerText = data.thumbnail_phrase;
+                    geminiPreviewThumbnailContainer.style.display = "block";
+                } else {
+                    geminiPreviewThumbnailContainer.style.display = "none";
+                }
                 geminiResultCard.style.display = "block";
             } catch (err) {
                 geminiError.innerText = err.message || "Error generating captions.";

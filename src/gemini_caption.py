@@ -25,15 +25,16 @@ class GeminiAPIError(GeminiError):
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 SYSTEM_INSTRUCTION = """You are the expert caption writer for Saba Bollywood YouTube Shorts.
-Transform the creator's rough video description into a polished pair of high-impact captions:
+Transform the creator's rough video description into high-impact Shorts assets:
 1. main_caption (Setup + Hook)
 2. curiosity_caption (The Reveal)
+3. thumbnail_phrase (Short visual hook for the cover thumbnail frame)
 
 CRITICAL SABA BOLLYWOOD WRITING SPECIFICATION:
 - Tone: Natural, engaging Bollywood entertainment/paparazzi news tone.
 - Curiosity: Create an irresistible open loop that makes viewers stay to watch the video.
-- Factuality: Stick 100% strictly to the factual story supplied by the creator. NEVER invent events, dialogue, motives, emotions, private thoughts, unmentioned relationships, or fake details.
-- No AI Fluff: Avoid generic AI phrases, long explanations, excessive adjectives, or clickbait nonsense.
+- Factuality (DO NOT INVENT FACTS): Stick 100% strictly to the factual story supplied by the creator. NEVER invent events, dialogue, actions, reactions, motives, emotions, private thoughts, unmentioned relationships, dates, locations, or fake details.
+- No AI Fluff: Avoid generic AI phrases, long explanations, excessive adjectives, SEO keywords, or clickbait nonsense that changes the meaning of the event.
 
 CAPTION LAYOUT & VISUAL COMPOSITION PHILOSOPHY:
 - Think about the caption as visual composition, not character count.
@@ -77,11 +78,54 @@ FORMAT & STRUCTURE RULES:
    - Do NOT add meaningless filler merely to increase length.
    - Do NOT repeat the main caption.
 
+3. THUMBNAIL / COVER-FRAME PHRASE (thumbnail_phrase):
+   - A short, high-impact visual hook displayed on the 1:1 Saba Bollywood cover thumbnail frame.
+   - Target Length:
+     * Ideally 2–6 words.
+     * Maximum 7 words.
+     * Extremely short, punchy, and readable at a glance on mobile screens.
+   - Strict Factuality (DO NOT INVENT FACTS):
+     * The thumbnail phrase must be derived ONLY from the supplied context.
+     * Never invent dialogue, actions, reactions, motives, relationships, events, locations, dates, or opinions not in the context.
+     * For example, if context says "Salman stopped to meet a young fan and smiled for a photo":
+       - Good: "SALMAN STOPPED FOR HIM ❤️"
+       - Bad: "SALMAN CHANGED HIS LIFE ❤️" (invents unsupported claim).
+   - Tone & Style:
+     * Saba Bollywood audience: viral entertainment / paparazzi entertainment page / YouTube thumbnail.
+     * Punchy, human, emotional, curiosity-driven, slightly dramatic when appropriate, instantly understandable.
+     * Avoid corporate/formal news language, generic AI wording, SEO keywords, hashtags.
+   - Do NOT Repeat the Title:
+     * The thumbnail phrase is a short visual hook, NOT a repeat of the entire title or full sentence description.
+     * For example, for "Salman Khan unexpectedly stopped while leaving and interacted with a fan":
+       - Good: "SALMAN STOPPED 😳"
+       - Bad: "SALMAN KHAN'S UNEXPECTED FAN MOMENT" (too long, repeats title).
+   - Use the Strongest Visual / Emotional Hook:
+     * Prioritize: unexpected action, strong reaction, emotional moment, funny moment, celebrity/fan interaction, surprise, wholesome moment, or dramatic reveal supported by context.
+     * Examples:
+       - "SALMAN DID THIS 😳"
+       - "HER REACTION 😂"
+       - "THIS WAS SO SWEET ❤️"
+       - "HE ACTUALLY STOPPED 😳"
+       - "FANS DID NOT EXPECT THIS"
+       - "HE STOPPED FOR HER ❤️"
+       - "NOBODY EXPECTED THIS"
+   - Capitalization:
+     * Use normal capitalization with strong emphasis where appropriate.
+     * Celebrity names may naturally appear capitalized (e.g. "SALMAN DID THIS 😳") for strong visual punch.
+     * Do NOT force every phrase into awkward Title Case (e.g. avoid "Salman Did This 😳").
+     * Do not make every word uppercase automatically unless it feels natural for the moment.
+   - Format Constraints:
+     * 0–2 emojis when appropriate.
+     * NO hashtags (e.g. no #hashtags).
+     * NO quotation marks in the returned value.
+     * Exactly ONE phrase in the "thumbnail_phrase" field. Do not return multiple options, explanations, or rankings.
+
 OUTPUT FORMAT:
 Respond with ONLY valid JSON with this exact schema:
 {
   "main_caption": "Setup goes here, hook phrase here...",
-  "curiosity_caption": "Resolution completing the action with enough substance here"
+  "curiosity_caption": "Resolution completing the action with enough substance here",
+  "thumbnail_phrase": "SHORT VISUAL HOOK 😳"
 }"""
 
 def clean_json_text(text: str) -> str:
@@ -96,8 +140,25 @@ def clean_json_text(text: str) -> str:
         text = "\n".join(lines).strip()
     return text
 
+def sanitize_thumbnail_phrase(phrase: str) -> str:
+    """
+    Cleans and validates the thumbnail phrase:
+    - Strips leading/trailing whitespace and quotes.
+    - Removes hashtags.
+    - Strips internal quotation marks.
+    - Normalizes internal spacing.
+    """
+    if not phrase:
+        return ""
+    p = phrase.strip().strip("\"'`“”‘’")
+    p = re.sub(r'#\w+', '', p)
+    for q in ('"', "'", '“', '”', '‘', '’', '`'):
+        p = p.replace(q, '')
+    p = re.sub(r'\s+', ' ', p).strip()
+    return p
+
 def parse_gemini_response(response_text: str) -> dict:
-    """Parse and validate JSON response containing main_caption and curiosity_caption."""
+    """Parse and validate JSON response containing main_caption, curiosity_caption, and thumbnail_phrase."""
     clean_text = clean_json_text(response_text)
     try:
         data = json.loads(clean_text)
@@ -105,10 +166,12 @@ def parse_gemini_response(response_text: str) -> dict:
         # Fallback regex extraction if raw JSON parsing fails
         main_match = re.search(r'"main_caption"\s*:\s*"([^"]+)"', clean_text)
         curiosity_match = re.search(r'"curiosity_caption"\s*:\s*"([^"]+)"', clean_text)
+        thumb_match = re.search(r'"thumbnail_phrase"\s*:\s*"([^"]+)"', clean_text)
         if main_match and curiosity_match:
             data = {
                 "main_caption": main_match.group(1),
-                "curiosity_caption": curiosity_match.group(1)
+                "curiosity_caption": curiosity_match.group(1),
+                "thumbnail_phrase": thumb_match.group(1) if thumb_match else ""
             }
         else:
             raise GeminiAPIError(f"Failed to parse structured JSON from Gemini response: {str(e)}")
@@ -118,14 +181,19 @@ def parse_gemini_response(response_text: str) -> dict:
 
     main_cap = data.get("main_caption", "").strip()
     curiosity_cap = data.get("curiosity_caption", "").strip()
+    raw_thumb = data.get("thumbnail_phrase", "")
+    thumb_phrase = sanitize_thumbnail_phrase(str(raw_thumb)) if raw_thumb else ""
 
     if not main_cap or not curiosity_cap:
         raise GeminiAPIError("Gemini response is missing required caption fields.")
 
-    return {
+    result = {
         "main_caption": main_cap,
-        "curiosity_caption": curiosity_cap
+        "curiosity_caption": curiosity_cap,
+        "thumbnail_phrase": thumb_phrase
     }
+
+    return result
 
 def build_gemini_payload(context: str, previous_generations: list = None) -> dict:
     """Construct Gemini API request payload with context and retry avoidance list."""
@@ -138,8 +206,12 @@ def build_gemini_payload(context: str, previous_generations: list = None) -> dic
         for i, gen in enumerate(previous_generations[-6:], 1):
             m = gen.get("main_caption", "")
             c = gen.get("curiosity_caption", "")
-            if m or c:
-                avoidance_list.append(f"Previous #{i}: Main=\"{m}\" | Reveal=\"{c}\"")
+            t = gen.get("thumbnail_phrase", "")
+            if m or c or t:
+                entry = f"Previous #{i}: Main=\"{m}\" | Reveal=\"{c}\""
+                if t:
+                    entry += f" | Thumbnail=\"{t}\""
+                avoidance_list.append(entry)
         
         if avoidance_list:
             prompt_parts.append(
