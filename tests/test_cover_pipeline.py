@@ -471,3 +471,194 @@ def test_server_serves_output_cover_image(tmp_path):
     assert handler.response_code == 200
     assert handler.response_headers.get('Content-Type') == 'image/jpeg'
     assert handler.wfile.getvalue() == b"fake jpeg content"
+
+
+def test_create_cover_video_segment_1080x1920_geometry(monkeypatch, tmp_path):
+    """Verify 1080x1920 rendered video produces 1080x1920 cover segment with exact 1002x1002 geometry."""
+    captured_cmd = None
+
+    def mock_run(cmd, *args, **kwargs):
+        nonlocal captured_cmd
+        captured_cmd = cmd
+        with open(cmd[-1], "w") as f:
+            f.write("cover segment")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(subprocess, "run", mock_run)
+
+    cover_img = str(tmp_path / "cover.jpg")
+    with open(cover_img, "w") as f: f.write("img")
+    out_seg = str(tmp_path / "segment.mp4")
+
+    audio_props = {"has_audio": True, "sample_rate": 44100, "channel_layout": "stereo", "channels": 2}
+    create_cover_video_segment(
+        cover_image_path=cover_img,
+        output_segment_path=out_seg,
+        duration=0.100,
+        audio_props=audio_props,
+        width=1080,
+        height=1920
+    )
+
+    assert captured_cmd is not None
+    cmd_str = " ".join(captured_cmd)
+    assert "s=1080x1920" in cmd_str
+    assert "scale=1002:1002" in cmd_str
+    assert "overlay=39:420" in cmd_str
+    assert "-t 0.100" in cmd_str
+    assert "trim=duration=0.100" in cmd_str
+    assert "atrim=duration=0.100" in cmd_str
+    assert "anullsrc=r=44100:cl=stereo" in cmd_str
+
+
+def test_create_cover_video_segment_720x1280_geometry(monkeypatch, tmp_path):
+    """Verify 720x1280 rendered video produces 720x1280 cover segment with proportional square geometry."""
+    captured_cmd = None
+
+    def mock_run(cmd, *args, **kwargs):
+        nonlocal captured_cmd
+        captured_cmd = cmd
+        with open(cmd[-1], "w") as f:
+            f.write("cover segment")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(subprocess, "run", mock_run)
+
+    cover_img = str(tmp_path / "cover.jpg")
+    with open(cover_img, "w") as f: f.write("img")
+    out_seg = str(tmp_path / "segment.mp4")
+
+    audio_props = {"has_audio": True, "sample_rate": 44100, "channel_layout": "stereo", "channels": 2}
+    create_cover_video_segment(
+        cover_image_path=cover_img,
+        output_segment_path=out_seg,
+        duration=0.100,
+        audio_props=audio_props,
+        width=720,
+        height=1280
+    )
+
+    assert captured_cmd is not None
+    cmd_str = " ".join(captured_cmd)
+    assert "s=720x1280" in cmd_str
+    assert "scale=668:668" in cmd_str
+    assert "overlay=26:280" in cmd_str
+    assert "-t 0.100" in cmd_str
+    assert "trim=duration=0.100" in cmd_str
+    assert "atrim=duration=0.100" in cmd_str
+    assert "anullsrc=r=44100:cl=stereo" in cmd_str
+
+
+def test_append_cover_frame_with_720x1280_rendered_video(monkeypatch, tmp_path):
+    """Verify append_cover_frame automatically detects 720x1280 and generates matching segment."""
+    source_vid = str(tmp_path / "source.mp4")
+    rendered_vid = str(tmp_path / "rendered_720.mp4")
+    output_vid = str(tmp_path / "output_720.mp4")
+    cover_img = str(tmp_path / "output_cover.jpg")
+
+    with open(source_vid, "w") as f: f.write("source")
+    with open(rendered_vid, "w") as f: f.write("rendered 720x1280")
+
+    mock_report = {
+        "selected_candidate": {
+            "timestamp": 1.50,
+            "rank": 1,
+            "total_score": 90
+        }
+    }
+    monkeypatch.setattr("src.frame_selector.run_frame_selection_diagnostic", lambda *args, **kwargs: mock_report)
+    monkeypatch.setattr("src.frame_selector.extract_full_res_frame", lambda *args, **kwargs: Image.new("RGB", (1080, 1080)))
+    monkeypatch.setattr("src.video_ops.get_audio_properties", lambda *args, **kwargs: {
+        "has_audio": True, "sample_rate": 44100, "channel_layout": "stereo", "channels": 2, "codec_name": "aac"
+    })
+
+    # Return 720x1280 for all probed videos
+    monkeypatch.setattr("src.video_ops.get_video_dimensions", lambda *args, **kwargs: (720, 1280))
+
+    created_segments = []
+    def mock_run(cmd, *args, **kwargs):
+        out_target = cmd[-1]
+        created_segments.append(list(cmd))
+        if out_target.endswith(".mp4"):
+            with open(out_target, "w") as f:
+                f.write("final 720x1280 content")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(subprocess, "run", mock_run)
+
+    res = append_cover_frame(
+        source_video=source_vid,
+        rendered_video=rendered_vid,
+        output_video=output_vid,
+        thumbnail_phrase="TEST 720P COVER",
+        start_time=0.0,
+        end_time=5.0,
+        crop_x=0,
+        crop_y=0,
+        crop_size=720,
+        cover_image_path=cover_img
+    )
+
+    assert res["success"] is True
+    assert os.path.exists(output_vid)
+    # Verify segment was created with 720x1280 canvas
+    segment_cmd_str = " ".join(created_segments[0])
+    assert "s=720x1280" in segment_cmd_str
+    assert "scale=668:668" in segment_cmd_str
+
+
+def test_concat_dimension_validation_catches_mismatch_and_fails_safely(monkeypatch, tmp_path):
+    """Verify that dimension mismatch between rendered video and cover segment triggers fail-safe."""
+    source_vid = str(tmp_path / "source.mp4")
+    rendered_vid = str(tmp_path / "rendered.mp4")
+    output_vid = str(tmp_path / "output.mp4")
+    cover_img = str(tmp_path / "cover.jpg")
+
+    with open(rendered_vid, "w") as f: f.write("original rendered video")
+    with open(source_vid, "w") as f: f.write("source")
+
+    mock_report = {"selected_candidate": {"timestamp": 1.0, "rank": 1, "total_score": 80}}
+    monkeypatch.setattr("src.frame_selector.run_frame_selection_diagnostic", lambda *args, **kwargs: mock_report)
+    monkeypatch.setattr("src.frame_selector.extract_full_res_frame", lambda *args, **kwargs: Image.new("RGB", (1080, 1080)))
+    monkeypatch.setattr("src.video_ops.get_audio_properties", lambda *args, **kwargs: {
+        "has_audio": True, "sample_rate": 44100, "channel_layout": "stereo", "channels": 2, "codec_name": "aac"
+    })
+
+    # Simulate mismatch: rendered_video is 720x1280, but cover segment is 1080x1920
+    def mock_get_dims(path):
+        if "rendered" in str(path):
+            return (720, 1280)
+        return (1080, 1920)
+
+    monkeypatch.setattr("src.video_ops.get_video_dimensions", mock_get_dims)
+
+    def mock_run(cmd, *args, **kwargs):
+        out_target = cmd[-1]
+        if out_target.endswith(".mp4"):
+            with open(out_target, "w") as f:
+                f.write("segment")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(subprocess, "run", mock_run)
+
+    res = append_cover_frame(
+        source_video=source_vid,
+        rendered_video=rendered_vid,
+        output_video=output_vid,
+        thumbnail_phrase="MISMATCH TEST",
+        start_time=0.0,
+        end_time=5.0,
+        crop_x=0,
+        crop_y=0,
+        crop_size=1080,
+        cover_image_path=cover_img
+    )
+
+    # Must fail safely and preserve original
+    assert res["success"] is False
+    assert "Cover segment dimensions" in res["error"]
+    assert "do not match rendered video dimensions" in res["error"]
+    assert os.path.exists(output_vid)
+    with open(output_vid, "r") as f:
+        assert f.read() == "original rendered video"
+

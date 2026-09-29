@@ -23,13 +23,17 @@ def get_ffprobe_path() -> str:
     return "ffprobe"
 
 def get_video_dimensions(video_path: str):
-    cmd = [get_ffprobe_path(), "-v", "quiet", "-print_format", "json", "-show_streams", video_path]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    data = json.loads(result.stdout)
-    for stream in data.get("streams", []):
-        if stream.get("codec_type") == "video":
-            return int(stream["width"]), int(stream["height"])
+    try:
+        cmd = [get_ffprobe_path(), "-v", "quiet", "-print_format", "json", "-show_streams", video_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        for stream in data.get("streams", []):
+            if stream.get("codec_type") == "video":
+                return int(stream["width"]), int(stream["height"])
+    except Exception:
+        pass
     return 1080, 1920
+
 
 DEFAULT_WATERMARK_PATH = str(Path(__file__).resolve().parent.parent / "assets" / "saba_bollywood_watermark.png")
 
@@ -278,11 +282,14 @@ def create_cover_video_segment(
     cover_image_path: str,
     output_segment_path: str,
     duration: float = 0.100,
-    audio_props: dict = None
+    audio_props: dict = None,
+    width: int = 1080,
+    height: int = 1920
 ) -> str:
     """
     Renders an exact duration-controlled (default 0.100s) cover video segment
-    on a 1080x1920 white canvas with the cover image scaled to 1002x1002 at x=39, y=420.
+    matching the target canvas dimensions (default 1080x1920) with the cover image
+    scaled square and positioned within the canvas.
     Produces silent audio matched to audio_props if audio is present.
     """
     if audio_props is None:
@@ -291,6 +298,20 @@ def create_cover_video_segment(
     has_audio = audio_props.get("has_audio", False)
     sample_rate = audio_props.get("sample_rate", 44100)
     channel_layout = audio_props.get("channel_layout", "stereo")
+
+    if width == 1080 and height == 1920:
+        cover_size = 1002
+        x = 39
+        y = 420
+    else:
+        # Scale square cover proportionally and center horizontally
+        scale_factor = width / 1080.0
+        cover_size = int(round(1002 * scale_factor))
+        if cover_size % 2 != 0:
+            cover_size -= 1
+        cover_size = min(cover_size, width, height)
+        x = (width - cover_size) // 2
+        y = int(round(420 * (height / 1920.0)))
 
     cmd = [get_ffmpeg_path(), "-y"]
     cmd.extend(["-loop", "1", "-t", f"{duration:.3f}", "-i", cover_image_path])
@@ -302,9 +323,9 @@ def create_cover_video_segment(
         ])
 
     fc = [
-        f"[0:v]scale=1002:1002[c_img];",
-        f"color=c=white:s=1080x1920:d={duration:.3f}:r=30[base];",
-        f"[base][c_img]overlay=39:420:eof_action=pass,trim=duration={duration:.3f},setpts=PTS-STARTPTS[outv]"
+        f"[0:v]scale={cover_size}:{cover_size}[c_img];",
+        f"color=c=white:s={width}x{height}:d={duration:.3f}:r=30[base];",
+        f"[base][c_img]overlay={x}:{y}:eof_action=pass,trim=duration={duration:.3f},setpts=PTS-STARTPTS[outv]"
     ]
 
     if has_audio:
@@ -325,7 +346,7 @@ def create_cover_video_segment(
         cmd.extend(["-c:a", "aac", "-b:a", "192k", "-ar", str(sample_rate)])
 
     cmd.append(output_segment_path)
-    print(f"Creating Cover Video Segment (duration={duration:.3f}s)")
+    print(f"Creating Cover Video Segment ({width}x{height}, duration={duration:.3f}s)")
     subprocess.run(cmd, check=True)
     return output_segment_path
 
@@ -453,16 +474,27 @@ def append_cover_frame(
             output_path=cover_image_path
         )
 
-        # Step 5: Inspect Audio Properties of Main Video
+        # Step 5: Determine actual dimensions and inspect audio properties of rendered video
+        rend_w, rend_h = get_video_dimensions(rendered_video)
         audio_props = get_audio_properties(rendered_video)
 
-        # Step 6: Create 0.100s Cover Video Segment
+        # Step 6: Create 0.100s Cover Video Segment matching rendered video dimensions
         create_cover_video_segment(
             cover_image_path=cover_image_path,
             output_segment_path=cover_segment_path,
             duration=duration,
-            audio_props=audio_props
+            audio_props=audio_props,
+            width=rend_w,
+            height=rend_h
         )
+
+        # Step 6b: Explicit validation before concatenation: dimensions must match
+        seg_w, seg_h = get_video_dimensions(cover_segment_path)
+        if (seg_w, seg_h) != (rend_w, rend_h):
+            raise ValueError(
+                f"Cover segment dimensions ({seg_w}x{seg_h}) do not match "
+                f"rendered video dimensions ({rend_w}x{rend_h})"
+            )
 
         # Step 7: Concatenate Main Video + Cover Segment
         concat_video_with_cover(
@@ -472,10 +504,10 @@ def append_cover_frame(
             has_audio=audio_props["has_audio"]
         )
 
-        # Step 8: Validate output dimensions
+        # Step 8: Validate output dimensions match rendered video
         final_w, final_h = get_video_dimensions(temp_final_path)
-        if (final_w, final_h) != (1080, 1920):
-            raise ValueError(f"Output dimensions mismatch: expected (1080, 1920), got ({final_w}, {final_h})")
+        if (final_w, final_h) != (rend_w, rend_h):
+            raise ValueError(f"Output dimensions mismatch: expected ({rend_w}, {rend_h}), got ({final_w}, {final_h})")
 
         # Step 9: Atomically replace output video
         if os.path.exists(temp_final_path) and os.path.getsize(temp_final_path) > 0:
