@@ -141,8 +141,8 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                 font_main = str(Path(FONT_REGISTRY.get(font_main_key, "fonts/Alike-Regular.ttf")).resolve())
 
                 caption_curiosity = form_data.get('caption_curiosity', '').replace('\r\n', '\n').replace('\r', '\n')
-                font_curiosity_key = form_data.get('font_curiosity', 'Calistoga')
-                font_curiosity = str(Path(FONT_REGISTRY.get(font_curiosity_key, "fonts/Calistoga-Regular.ttf")).resolve())
+                font_curiosity_key = form_data.get('font_curiosity', 'Alike')
+                font_curiosity = str(Path(FONT_REGISTRY.get(font_curiosity_key, "fonts/Alike-Regular.ttf")).resolve())
 
                 caption_main_emoji = form_data.get('caption_main_emoji', '')
                 caption_curiosity_emoji = form_data.get('caption_curiosity_emoji', '')

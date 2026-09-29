@@ -416,18 +416,33 @@ def test_latest_wins_seek_behavior():
     assert stepper.last_seek_requested == stepper.current_time
 
 def test_font_default_alike():
-    """Verify fresh UI state selects Alike for Main captions, and all other fonts remain available."""
+    """Verify fresh UI state selects Alike for both Main and Curiosity captions, and all other fonts remain available."""
     from pathlib import Path
+    import re
     html = Path("static/index.html").read_text(encoding="utf-8")
 
-    # Check default selected option is Alike
-    assert '<option value="Alike" selected>Alike</option>' in html
+    # Verify font-main selector defaults to Alike
+    main_match = re.search(r'<select id="font-main">(.*?)</select>', html, re.DOTALL)
+    assert main_match, "font-main select block not found"
+    assert '<option value="Alike" selected>Alike</option>' in main_match.group(1)
+    for font in ["Calistoga", "Caslon OS", "Fira Mono", "Source Sans Pro"]:
+        assert f'<option value="{font}">{font}</option>' in main_match.group(1)
 
-    # Check all existing fonts remain available
-    assert '<option value="Calistoga">Calistoga</option>' in html
-    assert '<option value="Caslon OS">Caslon OS</option>' in html
-    assert '<option value="Fira Mono">Fira Mono</option>' in html
-    assert '<option value="Source Sans Pro">Source Sans Pro</option>' in html
+    # Verify font-curiosity selector defaults to Alike
+    curiosity_match = re.search(r'<select id="font-curiosity">(.*?)</select>', html, re.DOTALL)
+    assert curiosity_match, "font-curiosity select block not found"
+    assert '<option value="Alike" selected>Alike</option>' in curiosity_match.group(1)
+    for font in ["Calistoga", "Caslon OS", "Fira Mono", "Source Sans Pro"]:
+        assert f'<option value="{font}">{font}</option>' in curiosity_match.group(1)
+
+def test_server_font_defaults():
+    """Verify backend server defaults to Alike for both Main and Curiosity captions."""
+    from pathlib import Path
+    server_code = Path("src/server.py").read_text(encoding="utf-8")
+    assert "form_data.get('font_main', 'Alike')" in server_code
+    assert 'FONT_REGISTRY.get(font_main_key, "fonts/Alike-Regular.ttf")' in server_code
+    assert "form_data.get('font_curiosity', 'Alike')" in server_code
+    assert 'FONT_REGISTRY.get(font_curiosity_key, "fonts/Alike-Regular.ttf")' in server_code
 
 def test_legacy_compatibility():
     segments = [{"start": 3, "end": 8}]
