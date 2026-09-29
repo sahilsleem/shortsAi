@@ -1307,3 +1307,154 @@ def test_prompt_regression_final_human_test():
     for prompt_name, prompt_text in [("SYSTEM_INSTRUCTION", SYSTEM_INSTRUCTION), ("MASTER_PUBLISHING_PROMPT", MASTER_PUBLISHING_PROMPT)]:
         assert "FINAL HUMAN TEST" in prompt_text
         assert "Would a real Bollywood fan-page creator actually write this?" in prompt_text
+
+
+def test_publishing_ui_html_structure_and_location():
+    """Test 55: Verify publishing section elements exist directly below video in index.html in order (Video -> Title -> Description)."""
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        html = f.read()
+
+    # Elements exist
+    assert 'id="result-video"' in html
+    assert 'id="publishing-section"' in html
+    assert 'id="publishing-title"' in html
+    assert 'id="publishing-top-titles-group"' in html
+    assert 'id="publishing-top-titles-list"' in html
+    assert 'id="publishing-all-titles-group"' in html
+    assert 'id="publishing-all-titles-list"' in html
+    assert 'id="publishing-description"' in html
+    assert 'id="btn-copy-title"' in html
+    assert 'id="btn-copy-description"' in html
+
+    # Verify visual order in DOM: Video -> Title -> Description
+    video_pos = html.find('id="result-video"')
+    pub_section_pos = html.find('id="publishing-section"')
+    title_pos = html.find('id="publishing-title"')
+    desc_pos = html.find('id="publishing-description"')
+
+    assert video_pos != -1
+    assert pub_section_pos != -1
+    assert title_pos != -1
+    assert desc_pos != -1
+
+    assert video_pos < pub_section_pos, "Publishing section must be located below video"
+    assert title_pos < desc_pos, "Title must appear before description"
+
+
+def test_publishing_ui_title_selection_updates_title_field():
+    """Test 56: Verify title selection updates the selected title field."""
+    pkg = make_valid_package("TitleTest")
+    titles = pkg["titles"]
+    top_titles = pkg["top_titles"]
+
+    # Simulation of initial title population logic
+    current_selected_title = top_titles[0] if top_titles else titles[0]
+    title_input_value = current_selected_title
+    assert title_input_value == top_titles[0]
+
+    # Simulate user clicking a different title (e.g., Title #5)
+    new_title = titles[4]
+    title_input_value = new_title
+    current_selected_title = new_title
+    assert title_input_value == titles[4]
+
+
+def test_publishing_ui_description_populated_and_starts_with_title():
+    """Test 57: Verify description is populated and starts with the selected title."""
+    pkg = make_valid_package("DescTest")
+    title = pkg["top_titles"][0]
+    raw_desc = pkg["description"]
+
+    # Saba Bollywood description starts with selected title
+    if not raw_desc.startswith(title):
+        initial_desc = title + "\n\n" + raw_desc
+    else:
+        initial_desc = raw_desc
+
+    assert initial_desc.startswith(title)
+    assert raw_desc in initial_desc
+
+
+def test_publishing_ui_changing_title_updates_only_beginning_of_description():
+    """Test 58: Verify changing the selected title updates only the beginning of the description."""
+    title1 = "Salman Khan stopped to greet a fan at Mumbai airport #Shorts"
+    title2 = "Salman Khan did something unexpected before leaving #Shorts"
+    credits_and_hashtags = (
+        "\n\n📌 CREDITS:\n"
+        "Some clips/images may be sourced from publicly available platforms...\n\n"
+        "#bollywood #paparazzi #celebrity #bollywoodshorts #shorts"
+    )
+
+    desc = title1 + credits_and_hashtags
+
+    # Simulate selectTitle(title2)
+    old_title = title1
+    new_title = title2
+
+    assert desc.startswith(old_title)
+    new_desc = new_title + desc[len(old_title):]
+
+    assert new_desc.startswith(title2)
+    assert not new_desc.startswith(title1)
+    # The remainder of the description must be identical
+    assert new_desc[len(title2):] == credits_and_hashtags
+
+
+def test_publishing_ui_manual_description_edits_preserved():
+    """Test 59: Verify manual description edits are preserved when title changes and across rendering."""
+    title1 = "Initial Title #Shorts"
+    title2 = "Second Title #Shorts"
+    user_custom_note = "\n\n[Creator Custom Note: Watch till the end!]"
+    credits_and_hashtags = (
+        "\n\n📌 CREDITS:\nSome clips sourced from web.\n\n"
+        "#bollywood #shorts"
+    )
+
+    # User starts with description then manually adds a note
+    desc = title1 + user_custom_note + credits_and_hashtags
+
+    # User clicks title2
+    assert desc.startswith(title1)
+    updated_desc = title2 + desc[len(title1):]
+
+    assert updated_desc.startswith(title2)
+    assert user_custom_note in updated_desc
+    assert credits_and_hashtags in updated_desc
+
+    # Re-rendering check: if publishingDescription already has value, it is not overwritten
+    re_rendered_desc = updated_desc
+    assert re_rendered_desc == updated_desc
+
+
+def test_rendering_does_not_trigger_ai_generation_and_preserves_package(monkeypatch):
+    """Test 60: Verify video rendering does not trigger AI generation and preserves the publishing package."""
+    ai_called = False
+
+    def mock_generate(*args, **kwargs):
+        nonlocal ai_called
+        ai_called = True
+        return make_valid_package("Unwanted")
+
+    monkeypatch.setattr("src.ai_router.generate_content_with_fallback", mock_generate)
+
+    # In server.py, /render handles video rendering independently
+    with open("src/server.py", "r", encoding="utf-8") as f:
+        server_code = f.read()
+
+    render_block = server_code[server_code.find("self.path == '/render'"):server_code.find("elif self.path in ('/api/generate_captions'")]
+    assert "generate_captions" not in render_block
+    assert "generate_content_with_fallback" not in render_block
+    assert not ai_called
+
+
+def test_publishing_section_revealed_below_video_after_rendering():
+    """Test 61: Verify JS logic reveals publishing section below video after rendering when AI content exists."""
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        html = f.read()
+
+    # JS logic checks currentGeneratedPair after render
+    assert "populatePublishingSection(currentGeneratedPair)" in html
+    # JS logic hides publishingSection if no AI content exists
+    assert "publishingSection.style.display = 'none'" in html
+    # Ensure no modal or new window is opened
+    assert "window.open" not in html

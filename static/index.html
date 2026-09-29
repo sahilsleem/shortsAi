@@ -278,6 +278,31 @@
         
         #status-message { font-size: 14px; font-weight: 500; color: var(--text-sub); }
         
+        .title-option-btn {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 10px 12px;
+            font-size: 13px;
+            line-height: 1.4;
+            color: var(--text-main);
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .title-option-btn:hover {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+        }
+        .title-option-btn.active {
+            background: #eef2ff;
+            border-color: #6366f1;
+            color: #312e81;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -481,8 +506,45 @@
         <div class="card" id="result-section" style="display: none; margin-top: 20px;">
             <div class="result-title">Your video is ready</div>
             <video id="result-video" controls playsinline></video>
-            <button class="btn" id="btn-download">Download Video</button>
-            <a id="btn-download-cover" class="toggle-btn" href="/output_cover.jpg" download="output_cover.jpg" style="display:none; text-align:center; padding: 12px; margin-top: 8px; text-decoration: none; font-weight: 600; font-size: 14px; background: #f1f5f9; color: var(--text-main); border-radius: 8px;">🖼 Download Cover Artwork</a>
+
+            <!-- Publishing Section (Title + Description) directly below video -->
+            <div id="publishing-section" style="display: none; text-align: left; margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 18px;">
+                <!-- YouTube Title -->
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 13px; font-weight: 700; color: #4338ca; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0;">YouTube Title</label>
+                        <button type="button" id="btn-copy-title" class="toggle-btn" style="padding: 4px 10px; font-size: 12px; font-weight: 600; border-radius: 6px; background: #e0e7ff; color: #4338ca;">📋 Copy Title</button>
+                    </div>
+                    <input type="text" id="publishing-title" placeholder="Selected YouTube Title..." style="font-size: 15px; font-weight: 600; padding: 12px 14px; border-radius: 10px; background: #ffffff; border: 1.5px solid #c7d2fe;">
+                </div>
+
+                <!-- Top 3 Titles -->
+                <div id="publishing-top-titles-group" style="margin-bottom: 14px; display: none;">
+                    <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">⭐ Top 3 Titles</div>
+                    <div id="publishing-top-titles-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
+                </div>
+
+                <!-- All 10 Titles -->
+                <div id="publishing-all-titles-group" style="margin-bottom: 18px; display: none;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">All Generated Titles (1–10)</div>
+                    <div id="publishing-all-titles-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
+                </div>
+
+                <!-- YouTube Description -->
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 13px; font-weight: 700; color: #4338ca; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0;">YouTube Description</label>
+                        <button type="button" id="btn-copy-description" class="toggle-btn" style="padding: 4px 10px; font-size: 12px; font-weight: 600; border-radius: 6px; background: #e0e7ff; color: #4338ca;">📋 Copy Description</button>
+                    </div>
+                    <textarea id="publishing-description" placeholder="YouTube Description..." style="min-height: 140px; font-size: 13px; line-height: 1.5; padding: 12px 14px; border-radius: 10px; background: #ffffff; border: 1.5px solid #c7d2fe;"></textarea>
+                </div>
+            </div>
+
+            <!-- Download controls -->
+            <div style="margin-top: 16px;">
+                <button class="btn" id="btn-download">Download Video</button>
+                <a id="btn-download-cover" class="toggle-btn" href="/output_cover.jpg" download="output_cover.jpg" style="display:none; text-align:center; padding: 12px; margin-top: 8px; text-decoration: none; font-weight: 600; font-size: 14px; background: #f1f5f9; color: var(--text-main); border-radius: 8px;">🖼 Download Cover Artwork</a>
+            </div>
         </div>
     </div>
 
@@ -502,6 +564,16 @@
         const endVal = document.getElementById('end-val');
         const playBtn = document.getElementById('play-btn');
         const resultSection = document.getElementById('result-section');
+        const publishingSection = document.getElementById('publishing-section');
+        const publishingTitleInput = document.getElementById('publishing-title');
+        const publishingTopTitlesGroup = document.getElementById('publishing-top-titles-group');
+        const publishingTopTitlesList = document.getElementById('publishing-top-titles-list');
+        const publishingAllTitlesGroup = document.getElementById('publishing-all-titles-group');
+        const publishingAllTitlesList = document.getElementById('publishing-all-titles-list');
+        const publishingDescription = document.getElementById('publishing-description');
+        const btnCopyTitle = document.getElementById('btn-copy-title');
+        const btnCopyDescription = document.getElementById('btn-copy-description');
+        let currentSelectedTitle = '';
         
         let currentMode = 'curiosity';
         document.getElementById('mode-curiosity').onclick = (e) => {
@@ -692,6 +764,11 @@
                     geminiPreviewThumbnailContainer.style.display = "none";
                 }
                 geminiResultCard.style.display = "block";
+
+                // If video is already rendered below, populate and reveal publishing section immediately
+                if (resultSection && resultSection.style.display === "block") {
+                    populatePublishingSection(data);
+                }
             } catch (err) {
                 geminiError.innerText = err.message || "AI generation is temporarily unavailable. Please try again in a moment.";
                 geminiError.style.display = "block";
@@ -747,6 +824,200 @@
                 captionMainInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         };
+
+        // Publishing Section Logic (Title & Description below Video)
+        function populatePublishingSection(pkg) {
+            if (!pkg) return;
+            const titles = Array.isArray(pkg.titles) ? pkg.titles : [];
+            const topTitles = Array.isArray(pkg.top_titles) ? pkg.top_titles : [];
+            const desc = typeof pkg.description === 'string' ? pkg.description : '';
+
+            if (titles.length === 0 && !desc) {
+                if (publishingSection) publishingSection.style.display = 'none';
+                return;
+            }
+
+            // Determine initial title if none selected yet
+            if (!currentSelectedTitle) {
+                if (topTitles.length > 0) {
+                    currentSelectedTitle = topTitles[0];
+                } else if (titles.length > 0) {
+                    currentSelectedTitle = titles[0];
+                }
+            }
+
+            if (publishingTitleInput && !publishingTitleInput.value) {
+                publishingTitleInput.value = currentSelectedTitle;
+            }
+
+            // Ensure description starts with selected title
+            if (publishingDescription && !publishingDescription.value) {
+                let initialDesc = desc;
+                if (currentSelectedTitle && !initialDesc.startsWith(currentSelectedTitle)) {
+                    const matchingTitle = titles.find(t => t && initialDesc.startsWith(t.trim()));
+                    if (matchingTitle) {
+                        currentSelectedTitle = matchingTitle;
+                        if (publishingTitleInput) publishingTitleInput.value = matchingTitle;
+                    } else {
+                        initialDesc = currentSelectedTitle + (initialDesc ? "\n\n" + initialDesc : "");
+                    }
+                }
+                publishingDescription.value = initialDesc;
+            }
+
+            // Render Top 3 Titles
+            if (publishingTopTitlesGroup && publishingTopTitlesList) {
+                publishingTopTitlesList.innerHTML = '';
+                if (topTitles.length > 0) {
+                    topTitles.forEach(title => {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'title-option-btn' + (title === currentSelectedTitle ? ' active' : '');
+                        btn.dataset.title = title;
+                        btn.innerText = `⭐ ${title}`;
+                        btn.onclick = () => selectTitle(title);
+                        publishingTopTitlesList.appendChild(btn);
+                    });
+                    publishingTopTitlesGroup.style.display = 'block';
+                } else {
+                    publishingTopTitlesGroup.style.display = 'none';
+                }
+            }
+
+            // Render All Titles (1-10)
+            if (publishingAllTitlesGroup && publishingAllTitlesList) {
+                publishingAllTitlesList.innerHTML = '';
+                if (titles.length > 0) {
+                    titles.forEach((title, idx) => {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'title-option-btn' + (title === currentSelectedTitle ? ' active' : '');
+                        btn.dataset.title = title;
+                        btn.innerText = `${idx + 1}. ${title}`;
+                        btn.onclick = () => selectTitle(title);
+                        publishingAllTitlesList.appendChild(btn);
+                    });
+                    publishingAllTitlesGroup.style.display = 'block';
+                } else {
+                    publishingAllTitlesGroup.style.display = 'none';
+                }
+            }
+
+            if (publishingSection) {
+                publishingSection.style.display = 'block';
+            }
+        }
+
+        function selectTitle(newTitle) {
+            if (!newTitle) return;
+            const oldTitle = currentSelectedTitle;
+            currentSelectedTitle = newTitle;
+
+            if (publishingTitleInput) {
+                publishingTitleInput.value = newTitle;
+            }
+
+            if (publishingDescription) {
+                let currentDesc = publishingDescription.value;
+                if (oldTitle && currentDesc.startsWith(oldTitle)) {
+                    publishingDescription.value = newTitle + currentDesc.slice(oldTitle.length);
+                } else if (oldTitle && currentDesc.startsWith(oldTitle.trim())) {
+                    publishingDescription.value = newTitle + currentDesc.slice(oldTitle.trim().length);
+                } else {
+                    const allTitles = (currentGeneratedPair && Array.isArray(currentGeneratedPair.titles)) ? currentGeneratedPair.titles : [];
+                    const found = allTitles.find(t => t && currentDesc.startsWith(t.trim()));
+                    if (found) {
+                        publishingDescription.value = newTitle + currentDesc.slice(found.trim().length);
+                    } else {
+                        const firstNewline = currentDesc.indexOf('\n');
+                        if (firstNewline !== -1 && oldTitle) {
+                            const firstLine = currentDesc.substring(0, firstNewline).trim();
+                            if (firstLine === oldTitle.trim()) {
+                                publishingDescription.value = newTitle + currentDesc.substring(firstNewline);
+                            } else {
+                                publishingDescription.value = newTitle + "\n\n" + currentDesc;
+                            }
+                        } else if (!currentDesc) {
+                            publishingDescription.value = newTitle;
+                        } else {
+                            publishingDescription.value = newTitle + "\n\n" + currentDesc;
+                        }
+                    }
+                }
+            }
+
+            refreshTitlePillSelection();
+        }
+
+        function refreshTitlePillSelection() {
+            const allBtns = document.querySelectorAll('.title-option-btn');
+            allBtns.forEach(btn => {
+                const btnTitle = btn.dataset.title;
+                if (btnTitle === currentSelectedTitle) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        if (publishingTitleInput) {
+            publishingTitleInput.oninput = () => {
+                const newTitle = publishingTitleInput.value;
+                if (publishingDescription && currentSelectedTitle && publishingDescription.value.startsWith(currentSelectedTitle)) {
+                    publishingDescription.value = newTitle + publishingDescription.value.slice(currentSelectedTitle.length);
+                }
+                currentSelectedTitle = newTitle;
+                refreshTitlePillSelection();
+            };
+        }
+
+        function copyTextToClipboard(text, btnElement, successMsg, defaultMsg) {
+            if (!text) return;
+            const doFeedback = () => {
+                const orig = btnElement.innerText;
+                btnElement.innerText = successMsg;
+                setTimeout(() => {
+                    btnElement.innerText = defaultMsg || orig;
+                }, 1500);
+            };
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(doFeedback).catch(() => {
+                    fallbackCopy(text);
+                    doFeedback();
+                });
+            } else {
+                fallbackCopy(text);
+                doFeedback();
+            }
+        }
+
+        function fallbackCopy(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            try { document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(ta);
+        }
+
+        if (btnCopyTitle) {
+            btnCopyTitle.onclick = () => {
+                const text = publishingTitleInput ? publishingTitleInput.value : '';
+                copyTextToClipboard(text, btnCopyTitle, "✓ Copied!", "📋 Copy Title");
+            };
+        }
+
+        if (btnCopyDescription) {
+            btnCopyDescription.onclick = () => {
+                const text = publishingDescription ? publishingDescription.value : '';
+                copyTextToClipboard(text, btnCopyDescription, "✓ Copied!", "📋 Copy Description");
+            };
+        }
 
         uploadArea.onclick = () => fileInput.click();
 
@@ -1033,6 +1304,13 @@
                 document.getElementById('result-video').src = url;
                 resultSection.style.display = 'block';
                 
+                // Display publishing section directly below video if AI package is available
+                if (currentGeneratedPair && (currentGeneratedPair.titles || currentGeneratedPair.description)) {
+                    populatePublishingSection(currentGeneratedPair);
+                } else {
+                    if (publishingSection) publishingSection.style.display = 'none';
+                }
+
                 const btnDownloadCover = document.getElementById('btn-download-cover');
                 if (btnDownloadCover) {
                     btnDownloadCover.style.display = (coverEnabled && thumbPhrase) ? 'block' : 'none';
