@@ -377,7 +377,7 @@
                 </div>
             </div>
 
-            <div class="section-label">✨ Gemini Caption Writer</div>
+            <div class="section-label">✨ AI Writer</div>
             <div class="card" style="border: 1px solid #c7d2fe; background: linear-gradient(180deg, #f5f3ff 0%, #ffffff 100%);">
                 <div class="form-group" style="margin-bottom: 12px;">
                     <label style="font-size: 13px; font-weight: 600; color: #4338ca;">What's happening in this video?</label>
@@ -410,10 +410,6 @@
                             <span id="gemini-preview-curiosity-emoji" style="font-size: 16px;"></span>
                         </div>
                         <div id="gemini-preview-curiosity" style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-top: 3px; line-height: 1.4;"></div>
-                    </div>
-                    <div id="gemini-preview-thumbnail-container" style="margin-bottom: 14px; display: none;">
-                        <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Cover Thumbnail Phrase</div>
-                        <div id="gemini-preview-thumbnail" style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-top: 3px; line-height: 1.4;"></div>
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <button type="button" class="toggle-btn" id="btn-gemini-retry" style="flex: 1; padding: 10px; background: #e2e8f0; color: var(--text-main); font-weight: 600; font-size: 14px; border-radius: 8px;">↻ Retry</button>
@@ -488,17 +484,17 @@
                 </div>
             </div>
             
-            <div class="section-label">Saba Bollywood Cover</div>
+            <div class="section-label">Branding</div>
             <div class="card">
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label>Saba Bollywood Cover Frame</label>
-                    <div class="toggle-group" id="cover-toggle">
-                        <button type="button" class="toggle-btn" data-val="off">OFF</button>
-                        <button type="button" class="toggle-btn active" data-val="on">ON</button>
+                    <label>Branding</label>
+                    <div class="toggle-group" id="branding-toggle">
+                        <button type="button" class="toggle-btn active" data-val="off">OFF</button>
+                        <button type="button" class="toggle-btn" data-val="on">ON</button>
                     </div>
                 </div>
             </div>
-            
+
             <button class="btn" id="btn-generate">Render Video</button>
             <div id="status-message" style="margin-top:12px; text-align:center; min-height: 20px;"></div>
         </div>
@@ -543,7 +539,6 @@
             <!-- Download controls -->
             <div style="margin-top: 16px;">
                 <button class="btn" id="btn-download">Download Video</button>
-                <a id="btn-download-cover" class="toggle-btn" href="/output_cover.jpg" download="output_cover.jpg" style="display:none; text-align:center; padding: 12px; margin-top: 8px; text-decoration: none; font-weight: 600; font-size: 14px; background: #f1f5f9; color: var(--text-main); border-radius: 8px;">🖼 Download Cover Artwork</a>
             </div>
         </div>
     </div>
@@ -615,18 +610,16 @@
             };
         });
 
-        // Saba Bollywood Cover Toggle Logic
-        let coverEnabled = true;
-        const coverToggle = document.getElementById('cover-toggle');
-        if (coverToggle) {
-            coverToggle.querySelectorAll('.toggle-btn').forEach(btn => {
-                btn.onclick = () => {
-                    coverToggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    coverEnabled = (btn.dataset.val === 'on');
-                };
-            });
-        }
+        let brandingEnabled = false;
+        const brandingToggle = document.getElementById('branding-toggle');
+        brandingToggle.querySelectorAll('.toggle-btn').forEach(btn => {
+            btn.onclick = () => {
+                brandingToggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                brandingEnabled = (btn.dataset.val === 'on');
+            };
+        });
+
 
         // Gemini Caption Writer Logic
         const geminiContext = document.getElementById('gemini-context');
@@ -639,8 +632,6 @@
         const geminiPreviewCuriosityEmoji = document.getElementById('gemini-preview-curiosity-emoji');
         const geminiOptionsContainer = document.getElementById('gemini-options-container');
         const geminiOptionsPills = document.getElementById('gemini-options-pills');
-        const geminiPreviewThumbnailContainer = document.getElementById('gemini-preview-thumbnail-container');
-        const geminiPreviewThumbnail = document.getElementById('gemini-preview-thumbnail');
         const btnGeminiRetry = document.getElementById('btn-gemini-retry');
         const btnGeminiUse = document.getElementById('btn-gemini-use');
 
@@ -739,8 +730,7 @@
                     main_caption: data.main_caption || data.main || "",
                     curiosity_caption: data.curiosity_caption || data.curiosity || "",
                     main: data.main || data.main_caption || "",
-                    curiosity: data.curiosity || data.curiosity_caption || "",
-                    thumbnail_phrase: data.thumbnail_phrase || ""
+                    curiosity: data.curiosity || data.curiosity_caption || ""
                 });
 
                 selectedCaptionIndex = 0;
@@ -757,12 +747,6 @@
                     }
                 }
 
-                if (data.thumbnail_phrase) {
-                    geminiPreviewThumbnail.innerText = data.thumbnail_phrase;
-                    geminiPreviewThumbnailContainer.style.display = "block";
-                } else {
-                    geminiPreviewThumbnailContainer.style.display = "none";
-                }
                 geminiResultCard.style.display = "block";
 
                 // If video is already rendered below, populate and reveal publishing section immediately
@@ -1292,9 +1276,7 @@
             fd.append('caption_curiosity_emoji', document.getElementById('caption-emoji-curiosity').value);
             fd.append('enhance', enhanceEnabled ? 'true' : 'false');
             fd.append('audio_mode', audioMode);
-            fd.append('cover_enabled', coverEnabled ? 'true' : 'false');
-            const thumbPhrase = (currentGeneratedPair && currentGeneratedPair.thumbnail_phrase) ? currentGeneratedPair.thumbnail_phrase : '';
-            fd.append('thumbnail_phrase', thumbPhrase);
+            fd.append('branding', brandingEnabled ? 'true' : 'false');
             
             try {
                 const res = await fetch('/render', { method: 'POST', body: fd });
@@ -1311,10 +1293,6 @@
                     if (publishingSection) publishingSection.style.display = 'none';
                 }
 
-                const btnDownloadCover = document.getElementById('btn-download-cover');
-                if (btnDownloadCover) {
-                    btnDownloadCover.style.display = (coverEnabled && thumbPhrase) ? 'block' : 'none';
-                }
 
                 // Scroll to result smoothly
                 setTimeout(() => {

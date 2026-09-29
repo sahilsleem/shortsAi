@@ -67,7 +67,7 @@ def test_enhance_off_preserves_current_behavior_main(monkeypatch):
     # Output canvas and video positioning unchanged
     assert "color=c=white:s=1080x1920:d=5.0:r=30[base]" in fc_str
     assert "[base][v_proc]overlay=39:420:eof_action=pass[bg]" in fc_str
-    # Saba Bollywood watermark unchanged
+    # Watermark unchanged
     assert "[with_cap][2:v]overlay=x=(W-w)/2:y=1374-h:eof_action=repeat[outv]" in fc_str
     # Audio unchanged: mapped via 0:a? without audio filters
     assert "-map" in captured_cmd and "0:a?" in captured_cmd
@@ -236,3 +236,61 @@ def test_curiosity_mode_enhance_off_and_on(monkeypatch):
     assert f"[raw_a]{ENHANCED_AUDIO_FILTERS}[outa]" in fc_on
     # Watermark remains persistent on [v_concat]
     assert "[v_concat][6:v]overlay=x=(W-w)/2:y=1374-h:eof_action=repeat[outv]" in fc_on
+
+def test_branding_off_no_watermark_in_render(monkeypatch):
+    """Verify OFF does not invoke the watermark path."""
+    import src.video_ops as vo
+    captured_cmd = None
+    def mock_run(cmd, *args, **kwargs):
+        nonlocal captured_cmd
+        captured_cmd = cmd
+    monkeypatch.setattr(vo.subprocess, "run", mock_run)
+    monkeypatch.setattr(vo.os.path, "exists", lambda p: True)
+
+    vo.render_main_video(
+        source_video="dummy_in.mp4",
+        output_video="dummy_out.mp4",
+        caption_overlay="dummy_overlay.png",
+        start_time=1.0,
+        end_time=6.0,
+        crop_x=50,
+        crop_y=80,
+        crop_size=900,
+        watermark_path="",
+        enhance=False
+    )
+
+    fc_index = captured_cmd.index("-filter_complex") + 1
+    fc_str = captured_cmd[fc_index]
+
+    assert "[with_cap][2:v]" not in fc_str
+    assert "overlay=x=(W-w)/2:y=1374-h" not in fc_str
+    assert "[bg][1:v]overlay=0:0[outv]" in fc_str
+
+def test_branding_on_invokes_watermark(monkeypatch):
+    """Verify ON invokes the existing watermark path."""
+    import src.video_ops as vo
+    captured_cmd = None
+    def mock_run(cmd, *args, **kwargs):
+        nonlocal captured_cmd
+        captured_cmd = cmd
+    monkeypatch.setattr(vo.subprocess, "run", mock_run)
+    monkeypatch.setattr(vo.os.path, "exists", lambda p: True)
+
+    vo.render_main_video(
+        source_video="dummy_in.mp4",
+        output_video="dummy_out.mp4",
+        caption_overlay="dummy_overlay.png",
+        start_time=1.0,
+        end_time=6.0,
+        crop_x=50,
+        crop_y=80,
+        crop_size=900,
+        watermark_path="dummy_wm.png",
+        enhance=False
+    )
+
+    fc_index = captured_cmd.index("-filter_complex") + 1
+    fc_str = captured_cmd[fc_index]
+
+    assert "[with_cap][2:v]overlay=x=(W-w)/2:y=1374-h" in fc_str

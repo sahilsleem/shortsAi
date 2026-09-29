@@ -81,7 +81,7 @@ def test_empty_context_handling():
         generate_captions(context="   \n  ", api_key="dummy_key")
 
 def test_build_gemini_payload_with_and_without_retries():
-    """Verify payload generation, Saba Bollywood instructions, visual composition rules, and retry avoidance list."""
+    """Verify payload generation, ShortsAI instructions, visual composition rules, and retry avoidance list."""
     context = "Salman Khan was spotted at Mumbai airport greeting fans"
     
     # Without previous generations
@@ -90,7 +90,8 @@ def test_build_gemini_payload_with_and_without_retries():
     assert context in prompt1
     assert "SETUP, CURIOSITY HOOK" in prompt1
     assert "MUST include a comma" in prompt1
-    assert "Saba Bollywood" in prompt1
+    assert "YouTube Shorts" in prompt1
+    assert "Saba Bollywood" not in prompt1
     assert "DO NOT repeat" not in prompt1
 
     # Verify visual composition & line requirements
@@ -388,38 +389,6 @@ def test_gemini_failure_does_not_affect_normal_rendering(monkeypatch):
     assert "-filter_complex" in captured_cmd
 
 
-def test_thumbnail_phrase_returned_in_structured_response():
-    """Verify that parse_gemini_response parses thumbnail_phrase alongside caption fields."""
-    raw_json = json.dumps({
-        "main_caption": "Salman Khan greeted a young fan, but then...",
-        "curiosity_caption": "he took a selfie and signed an autograph",
-        "thumbnail_phrase": "SALMAN DID THIS 😳"
-    })
-    res = parse_gemini_response(raw_json)
-    assert res["main_caption"] == "Salman Khan greeted a young fan, but then..."
-    assert res["curiosity_caption"] == "he took a selfie and signed an autograph"
-    assert res["thumbnail_phrase"] == "SALMAN DID THIS 😳"
-
-
-def test_thumbnail_phrase_length_and_constraints():
-    """Verify word count constraints (<= 7 words) and formatting for thumbnail phrases."""
-    valid_phrases = [
-        "SALMAN DID THIS 😳",
-        "HER REACTION 😂",
-        "THIS WAS SO SWEET ❤️",
-        "HE ACTUALLY STOPPED 😳",
-        "FANS DID NOT EXPECT THIS",
-        "HE STOPPED FOR HER ❤️",
-        "NOBODY EXPECTED THIS"
-    ]
-    for phrase in valid_phrases:
-        sanitized = sanitize_thumbnail_phrase(phrase)
-        words = sanitized.split()
-        assert 1 <= len(words) <= 7, f"Phrase '{phrase}' failed word count check: {len(words)} words"
-        assert not any(w.startswith("#") for w in words), "Hashtag found in phrase"
-        assert '"' not in sanitized and "'" not in sanitized, "Quotation mark found in phrase"
-
-
 def test_thumbnail_phrase_sanitization_no_hashtags_or_quotes():
     """Verify sanitize_thumbnail_phrase strips quotes, removes hashtags, and normalizes spaces."""
     assert sanitize_thumbnail_phrase('"SALMAN DID THIS 😳"') == "SALMAN DID THIS 😳"
@@ -432,115 +401,21 @@ def test_thumbnail_phrase_sanitization_no_hashtags_or_quotes():
     assert sanitize_thumbnail_phrase("") == ""
     assert sanitize_thumbnail_phrase(None) == ""
 
-
-def test_structured_json_parser_accepts_thumbnail_phrase():
-    """Verify clean JSON, markdown-wrapped JSON, and regex fallback extract thumbnail_phrase."""
-    data = {
-        "main_caption": "Ranbir waved at the crowd, but then...",
-        "curiosity_caption": "he dropped his phone on the floor",
-        "thumbnail_phrase": "HE DROPPED IT 😳"
-    }
-
-    # 1. Clean JSON
-    res1 = parse_gemini_response(json.dumps(data))
-    assert res1["thumbnail_phrase"] == "HE DROPPED IT 😳"
-
-    # 2. Markdown fenced JSON
-    res2 = parse_gemini_response(f"```json\n{json.dumps(data)}\n```")
-    assert res2["thumbnail_phrase"] == "HE DROPPED IT 😳"
-
-    # 3. Regex fallback on slightly malformed JSON
-    malformed = '{\n  "main_caption": "Ranbir waved, but...",\n  "curiosity_caption": "he slipped",\n  "thumbnail_phrase": "RANBIR SLIPPED 😱",\n}'
-    res3 = parse_gemini_response(malformed)
-    assert res3["thumbnail_phrase"] == "RANBIR SLIPPED 😱"
-
-
-def test_backward_compatibility_without_thumbnail_phrase():
-    """Verify that responses missing thumbnail_phrase (legacy mocks) parse safely with empty string default."""
-    legacy_json = json.dumps({
-        "main_caption": "Salman Khan walked out, but then...",
-        "curiosity_caption": "security escorted him through the back exit"
-    })
-    res = parse_gemini_response(legacy_json)
-    assert res["main_caption"] == "Salman Khan walked out, but then..."
-    assert res["curiosity_caption"] == "security escorted him through the back exit"
-    assert "thumbnail_phrase" in res
-    assert res["thumbnail_phrase"] == ""
-
-
-def test_retry_payload_includes_thumbnail_avoidance():
-    """Verify build_gemini_payload includes previous thumbnail phrases in retry avoidance list."""
+def test_retry_payload_includes_avoidance():
+    """Verify build_gemini_payload includes previous generations in retry avoidance list."""
     context = "Salman Khan met a young fan at the airport"
     prev = [
         {
             "main_caption": "Salman Khan was walking at the airport, but then...",
-            "curiosity_caption": "a young boy ran over to take a picture",
-            "thumbnail_phrase": "SALMAN DID THIS 😳"
+            "curiosity_caption": "a young boy ran over to take a picture"
         },
         {
             "main_caption": "Salman noticed someone calling his name, however...",
-            "curiosity_caption": "he stopped his team and posed for a photo",
-            "thumbnail_phrase": "HE STOPPED FOR HIM ❤️"
+            "curiosity_caption": "he stopped his team and posed for a photo"
         }
     ]
     payload = build_gemini_payload(context, previous_generations=prev)
     prompt = payload["contents"][0]["parts"][0]["text"]
     assert 'Previous #1: Main=' in prompt
-    assert 'Thumbnail="SALMAN DID THIS 😳"' in prompt
     assert 'Previous #2: Main=' in prompt
-    assert 'Thumbnail="HE STOPPED FOR HIM ❤️"' in prompt
-
-
-def test_prompt_contains_saba_bollywood_thumbnail_instructions():
-    """Verify system instructions contain all Phase 4 thumbnail phrase specifications."""
-    payload = build_gemini_payload("Dummy context")
-    prompt = payload["contents"][0]["parts"][0]["text"]
-    assert "THUMBNAIL / COVER-FRAME PHRASE (thumbnail_phrase)" in prompt
-    assert "Ideally 2–6 words" in prompt
-    assert "Maximum 7 words" in prompt
-    assert "DO NOT INVENT FACTS" in prompt
-    assert "Strict Factuality" in prompt
-    assert "Do NOT Repeat the Title" in prompt
-    assert "0–2 emojis" in prompt or "0-2 emojis" in prompt
-    assert "NO hashtags" in prompt
-    assert "NO quotation marks" in prompt
-    assert '"thumbnail_phrase":' in prompt
-
-
-def test_server_endpoint_returns_thumbnail_phrase(monkeypatch):
-    """Verify ShortsAIHandler returns thumbnail_phrase in /api/generate_captions JSON response."""
-    monkeypatch.setattr(
-        "src.server.generate_captions",
-        lambda context, previous_generations: {
-            "main_caption": "Salman Khan stopped at the exit, but then...",
-            "curiosity_caption": "he waited for the girl to reach him",
-            "thumbnail_phrase": "HE STOPPED FOR HER ❤️"
-        }
-    )
-
-    class DummyHandler(ShortsAIHandler):
-        def __init__(self, path, body):
-            self.path = path
-            self.headers = {"Content-Length": str(len(body))}
-            self.rfile = io.BytesIO(body)
-            self.wfile = io.BytesIO()
-            self.response_code = None
-            self.response_headers = {}
-
-        def send_response(self, code, message=None):
-            self.response_code = code
-
-        def send_header(self, keyword, value):
-            self.response_headers[keyword] = value
-
-        def end_headers(self):
-            pass
-
-    req_body = json.dumps({"context": "Salman stopped for a fan", "previous_generations": []}).encode("utf-8")
-    handler = DummyHandler('/api/generate_captions', req_body)
-    handler.do_POST()
-
-    assert handler.response_code == 200
-    res_json = json.loads(handler.wfile.getvalue().decode("utf-8"))
-    assert res_json["thumbnail_phrase"] == "HE STOPPED FOR HER ❤️"
-
+    assert 'Thumbnail=' not in prompt

@@ -12,7 +12,7 @@ from email import message_from_bytes
 
 from src.config import CaptionData
 from src.image_ops import generate_text_overlay, compute_best_font_size
-from src.video_ops import render_main_video, render_curiosity_video, get_ffprobe_path, append_cover_frame
+from src.video_ops import render_main_video, render_curiosity_video, get_ffprobe_path
 from src.gemini_caption import GeminiError, GeminiConfigError, GeminiQuotaError, GeminiAPIError
 from src.ai_router import generate_content_with_fallback, AllProvidersFailedError
 
@@ -61,18 +61,6 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     self.wfile.write(f.read())
             else:
                 self.send_error(404, 'File Not Found')
-        elif self.path in ('/output_cover.jpg', '/cover', '/download_cover'):
-            cover_path = Path("working/output_cover.jpg").resolve()
-            if cover_path.exists() and cover_path.is_file():
-                self.send_response(200)
-                self.send_header('Content-Type', 'image/jpeg')
-                self.send_header('Content-Disposition', 'attachment; filename="output_cover.jpg"')
-                self.send_header('Content-Length', str(cover_path.stat().st_size))
-                self.end_headers()
-                with open(cover_path, 'rb') as f:
-                    shutil.copyfileobj(f, self.wfile)
-            else:
-                self.send_error(404, "Cover image not found")
         else:
             self.send_error(404, 'File Not Found')
 
@@ -83,19 +71,19 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                 if content_length > MAX_UPLOAD_SIZE:
                     self.send_error(413, "Video too large")
                     return
-                
+
                 body = self.rfile.read(content_length)
-                
+
                 msg_bytes = b""
                 for k, v in self.headers.items():
                     msg_bytes += f"{k}: {v}\r\n".encode('latin-1')
                 msg_bytes += b"\r\n" + body
-                
+
                 msg = message_from_bytes(msg_bytes)
-                
+
                 form_data = {}
                 video_file = None
-                
+
                 if msg.is_multipart():
                     for part in msg.get_payload():
                         cd = part.get("Content-Disposition", "")
@@ -108,28 +96,28 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                                     name = param[5:].strip('"')
                                 elif param.startswith('filename='):
                                     filename = param[9:].strip('"')
-                            
+
                             payload = part.get_payload(decode=True)
                             if filename and name == 'video':
                                 video_file = payload
                             elif name:
                                 form_data[name] = payload.decode('utf-8')
-                
+
                 if not video_file:
                     self.send_error(400, "No video file provided")
                     return
-                
+
                 mode = form_data.get('mode', 'main')
                 start_time = float(form_data.get('start_time', 0))
                 end_time = float(form_data.get('end_time', 0))
-                
+
                 cut_time_str = form_data.get('cut_time', '')
                 cut_time = float(cut_time_str) if cut_time_str and cut_time_str != 'NaN' else None
-                
+
                 crop_x = int(form_data.get('crop_x', 0))
                 crop_y = int(form_data.get('crop_y', 0))
                 crop_size = int(form_data.get('crop_size', 1080))
-                
+
                 FONT_REGISTRY = {
                     "Calistoga": "fonts/Calistoga-Regular.ttf",
                     "Alike": "fonts/Alike-Regular.ttf",
@@ -141,52 +129,53 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                 caption_main = form_data.get('caption_main', '').replace('\r\n', '\n').replace('\r', '\n')
                 font_main_key = form_data.get('font_main', 'Calistoga')
                 font_main = str(Path(FONT_REGISTRY.get(font_main_key, "fonts/Calistoga-Regular.ttf")).resolve())
-                
+
                 caption_curiosity = form_data.get('caption_curiosity', '').replace('\r\n', '\n').replace('\r', '\n')
                 font_curiosity_key = form_data.get('font_curiosity', 'Calistoga')
                 font_curiosity = str(Path(FONT_REGISTRY.get(font_curiosity_key, "fonts/Calistoga-Regular.ttf")).resolve())
-                
+
                 caption_main_emoji = form_data.get('caption_main_emoji', '')
                 caption_curiosity_emoji = form_data.get('caption_curiosity_emoji', '')
-                
+
                 enhance_str = form_data.get('enhance', 'false').lower()
                 enhance = enhance_str in ('true', '1', 'yes', 'on')
                 audio_mode = form_data.get('audio_mode', 'enhanced' if enhance else 'original').lower()
                 if audio_mode not in ('original', 'enhanced', 'voice_focus'):
                     audio_mode = 'enhanced' if enhance else 'original'
-                
-                cover_enabled_str = form_data.get('cover_enabled', 'true').lower()
-                cover_enabled = cover_enabled_str in ('true', '1', 'yes', 'on')
-                thumbnail_phrase = form_data.get('thumbnail_phrase', '').strip()
-                
+
+                branding_enabled_str = form_data.get('branding', 'false').lower()
+                branding_enabled = branding_enabled_str in ('true', '1', 'yes', 'on')
+                from src.video_ops import DEFAULT_WATERMARK_PATH
+                wm_path = DEFAULT_WATERMARK_PATH if branding_enabled else ""
+
                 req_id = str(uuid.uuid4())
                 workspace = Path(f"working/{req_id}").resolve()
                 os.makedirs(workspace, exist_ok=True)
-                
+
                 input_path = workspace / "input.mp4"
                 output_path = workspace / "output.mp4"
-                
+
                 try:
                     with open(input_path, "wb") as f:
                         f.write(video_file)
-                        
+
                     actual_dur = get_duration(str(input_path))
                     if actual_dur <= 0:
                         raise Exception("Invalid video duration")
-                        
+
                     start_time = max(0.0, min(start_time, actual_dur))
                     end_time = max(start_time + 0.5, min(end_time, actual_dur))
-                            
+
                     if mode == "main":
                         cap = CaptionData(main_text=caption_main, curiosity_text="", emoji=caption_main_emoji, mode="main")
                         fs = compute_best_font_size(cap, font_main, 936, 3)
                         overlay_path = workspace / "overlay.png"
                         generate_text_overlay(cap, font_main, fs, str(overlay_path))
-                        
+
                         render_main_video(
                             str(input_path), str(output_path), str(overlay_path),
                             start_time, end_time, crop_x, crop_y, crop_size,
-                            enhance=enhance, audio_mode=audio_mode
+                            watermark_path=wm_path, enhance=enhance, audio_mode=audio_mode
                         )
                     else:
                         if "," in caption_main:
@@ -196,52 +185,31 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                         else:
                             hook_black = caption_main.rstrip(' \t')
                             hook_red = ""
-                            
+
                         cap_hook = CaptionData(main_text=hook_black, curiosity_text=hook_red, emoji=caption_main_emoji)
                         cap_reveal = CaptionData(main_text=caption_curiosity, curiosity_text="", emoji=caption_curiosity_emoji)
-                        
+
                         fs_hook = compute_best_font_size(cap_hook, font_main, 936, 3)
                         fs_reveal = compute_best_font_size(cap_reveal, font_curiosity, 936, 3)
-                        
+
                         hook_overlay = workspace / "hook.png"
                         reveal_overlay = workspace / "reveal.png"
                         generate_text_overlay(cap_hook, font_main, fs_hook, str(hook_overlay))
                         generate_text_overlay(cap_reveal, font_curiosity, fs_reveal, str(reveal_overlay))
-                        
+
                         if cut_time is None:
                             cut_time = start_time + (end_time - start_time) / 2.0
                         else:
                             cut_time = max(start_time + 0.001, min(cut_time, end_time - 0.001))
-                        
+
                         render_curiosity_video(
                             str(input_path), str(output_path), str(hook_overlay), str(reveal_overlay),
                             start_time, cut_time, end_time, crop_x, crop_y, crop_size,
-                            enhance=enhance, audio_mode=audio_mode
+                            watermark_path=wm_path, enhance=enhance, audio_mode=audio_mode
                         )
-                        
-                    # Phase 5: Optional Saba Bollywood Cover Frame appending
-                    if cover_enabled and os.path.exists(output_path):
-                        cover_img_path = str(workspace / "output_cover.jpg")
-                        cover_res = append_cover_frame(
-                            source_video=str(input_path),
-                            rendered_video=str(output_path),
-                            output_video=str(output_path),
-                            thumbnail_phrase=thumbnail_phrase,
-                            start_time=start_time,
-                            end_time=end_time,
-                            crop_x=crop_x,
-                            crop_y=crop_y,
-                            crop_size=crop_size,
-                            mode=mode,
-                            cut_time=cut_time,
-                            enhance=enhance,
-                            cover_image_path=cover_img_path
-                        )
-                        if cover_res.get("success") and os.path.exists(cover_img_path):
-                            persistent_cover = Path("working/output_cover.jpg").resolve()
-                            os.makedirs(persistent_cover.parent, exist_ok=True)
-                            shutil.copyfile(cover_img_path, persistent_cover)
-                    
+
+
+
                     if os.path.exists(output_path):
                         self.send_response(200)
                         self.send_header('Content-Type', 'video/mp4')
@@ -253,12 +221,12 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                             shutil.copyfileobj(f, self.wfile)
                     else:
                         self.send_error(500, "Render output missing")
-                        
+
                 except Exception as e:
                     self.send_error(500, f"Render failed: {str(e)}")
                 finally:
                     cleanup_workspace(str(workspace))
-                    
+
             except Exception as e:
                 self.send_error(500, f"Server error: {str(e)}")
         elif self.path in ('/api/generate_captions', '/generate_captions'):
@@ -273,10 +241,10 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(json.dumps({"error": "Invalid JSON payload"}).encode('utf-8'))
                     return
-                
+
                 context = data.get('context', '')
                 previous_generations = data.get('previous_generations', [])
-                
+
                 try:
                     captions = generate_captions(context=context, previous_generations=previous_generations)
                     self.send_response(200)

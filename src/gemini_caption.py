@@ -88,17 +88,16 @@ def separate_emojis(text: str):
     emojis = extract_emojis(text)
     return clean, emojis
 
-SYSTEM_INSTRUCTION = """You are the expert caption writer for Saba Bollywood YouTube Shorts.
+SYSTEM_INSTRUCTION = """You are the expert caption writer for YouTube Shorts.
 Transform the creator's rough video description into high-impact Shorts assets:
 1. main (Setup + Hook - Clean text only)
 2. main_emoji (0-2 emojis or empty string)
 3. curiosity (The Reveal / Payoff - Clean text only)
 4. curiosity_emoji (0-2 emojis or empty string)
-5. thumbnail_phrase (Short visual hook for the cover thumbnail frame)
 
 TARGET VOICE & PERSONA:
-- Write like a real Bollywood fan-page creator who watched the video, NOT an AI news writer or robotic entertainment journalist.
-- Think: "I watched this clip and I'm telling another Bollywood fan what made this moment interesting."
+- Write like a real fan-page creator who watched the video, NOT an AI news writer or robotic entertainment journalist.
+- Think: "I watched this clip and I'm telling another viewer what made this moment interesting."
 - Not: "I am generating entertainment-news copy about this event."
 - Tone: emotional, human, simple, conversational, relatable, punchy, slightly dramatic when appropriate, curiosity-driven, natural, easy to understand instantly.
 
@@ -192,51 +191,9 @@ CAPITALIZATION RULES:
 - Keep ordinary words lowercase.
 - CRITICAL RATIONALE: The existing ShortsAI video renderer uses uppercase-first words as the visual red emphasis. Only names and genuinely important proper nouns should receive that red emphasis. If you use Title Case, every word becomes red.
 
-4. THUMBNAIL / COVER-FRAME PHRASE (thumbnail_phrase):
-   - A short, high-impact visual hook displayed on the 1:1 Saba Bollywood cover thumbnail frame.
-   - Target Length:
-     * Ideally 2–6 words.
-     * Maximum 7 words.
-     * Extremely short, punchy, and readable at a glance on mobile screens.
-   - Strict Factuality (DO NOT INVENT FACTS):
-     * The thumbnail phrase must be derived ONLY from the supplied context.
-     * Never invent dialogue, actions, reactions, motives, relationships, events, locations, dates, or opinions not in the context.
-     * For example, if context says "Salman stopped to meet a young fan and smiled for a photo":
-       - Good: "SALMAN STOPPED FOR HIM ❤️"
-       - Bad: "SALMAN CHANGED HIS LIFE ❤️" (invents unsupported claim).
-   - Tone & Style:
-     * Saba Bollywood audience: viral entertainment / paparazzi entertainment page / YouTube thumbnail.
-     * Punchy, human, emotional, curiosity-driven, slightly dramatic when appropriate, instantly understandable.
-     * Avoid corporate/formal news language, generic AI wording, SEO keywords, hashtags.
-   - Do NOT Repeat the Title:
-     * The thumbnail phrase is a short visual hook, NOT a repeat of the entire title or full sentence description.
-     * For example, for "Salman Khan unexpectedly stopped while leaving and interacted with a fan":
-       - Good: "SALMAN STOPPED 😳"
-       - Bad: "SALMAN KHAN'S UNEXPECTED FAN MOMENT" (too long, repeats title).
-   - Use the Strongest Visual / Emotional Hook:
-     * Prioritize: unexpected action, strong reaction, emotional moment, funny moment, celebrity/fan interaction, surprise, wholesome moment, or dramatic reveal supported by context.
-     * Examples:
-       - "SALMAN DID THIS 😳"
-       - "HER REACTION 😂"
-       - "THIS WAS SO SWEET ❤️"
-       - "HE ACTUALLY STOPPED 😳"
-       - "FANS DID NOT EXPECT THIS"
-       - "HE STOPPED FOR HER ❤️"
-       - "NOBODY EXPECTED THIS"
-   - Capitalization:
-     * Use normal capitalization with strong emphasis where appropriate.
-     * Celebrity names may naturally appear capitalized (e.g. "SALMAN DID THIS 😳") for strong visual punch.
-     * Do NOT force every phrase into awkward Title Case (e.g. avoid "Salman Did This 😳").
-     * Do not make every word uppercase automatically unless it feels natural for the moment.
-   - Format Constraints:
-     * 0–2 emojis when appropriate.
-     * NO hashtags (e.g. no #hashtags).
-     * NO quotation marks in the returned value.
-     * Exactly ONE phrase in the "thumbnail_phrase" field. Do not return multiple options, explanations, or rankings.
-
 FINAL HUMAN TEST:
 Before returning, internally ask:
-"Would a real Bollywood fan-page creator actually write this?"
+"Would a real social media creator actually write this?"
 If it sounds like a newspaper, generic AI, or overly complicated English, or lacks emotion or curiosity, rewrite it to be simpler, punchier, and more conversational!
 
 OUTPUT FORMAT:
@@ -245,8 +202,7 @@ Respond with ONLY valid JSON with this exact schema:
   "main": "Setup goes here, hook phrase here...",
   "main_emoji": "👀",
   "curiosity": "Resolution completing the action with enough substance here",
-  "curiosity_emoji": "❤️",
-  "thumbnail_phrase": "SHORT VISUAL HOOK 😳"
+  "curiosity_emoji": "❤️"
 }"""
 
 def clean_json_text(text: str) -> str:
@@ -287,7 +243,6 @@ def parse_gemini_response(response_text: str) -> dict:
         # Fallback regex extraction if raw JSON parsing fails
         main_match = re.search(r'"(?:main|main_caption)"\s*:\s*"([^"]+)"', clean_text)
         curiosity_match = re.search(r'"(?:curiosity|curiosity_caption)"\s*:\s*"([^"]+)"', clean_text)
-        thumb_match = re.search(r'"thumbnail_phrase"\s*:\s*"([^"]+)"', clean_text)
         main_emoji_match = re.search(r'"main_emoji"\s*:\s*"([^"]*)"', clean_text)
         curiosity_emoji_match = re.search(r'"curiosity_emoji"\s*:\s*"([^"]*)"', clean_text)
         if main_match and curiosity_match:
@@ -295,8 +250,7 @@ def parse_gemini_response(response_text: str) -> dict:
                 "main": main_match.group(1),
                 "curiosity": curiosity_match.group(1),
                 "main_emoji": main_emoji_match.group(1) if main_emoji_match else "",
-                "curiosity_emoji": curiosity_emoji_match.group(1) if curiosity_emoji_match else "",
-                "thumbnail_phrase": thumb_match.group(1) if thumb_match else ""
+                "curiosity_emoji": curiosity_emoji_match.group(1) if curiosity_emoji_match else ""
             }
         else:
             raise GeminiAPIError(f"Failed to parse structured JSON from Gemini response: {str(e)}")
@@ -308,8 +262,6 @@ def parse_gemini_response(response_text: str) -> dict:
     raw_curiosity = str(data.get("curiosity") if "curiosity" in data else data.get("curiosity_caption", "")).strip()
     raw_main_emoji = str(data.get("main_emoji", "")).strip()
     raw_curiosity_emoji = str(data.get("curiosity_emoji", "")).strip()
-    raw_thumb = data.get("thumbnail_phrase", "")
-    thumb_phrase = sanitize_thumbnail_phrase(str(raw_thumb)) if raw_thumb else ""
 
     clean_main, embedded_m_emojis = separate_emojis(raw_main)
     clean_curiosity, embedded_c_emojis = separate_emojis(raw_curiosity)
@@ -326,8 +278,7 @@ def parse_gemini_response(response_text: str) -> dict:
         "curiosity": clean_curiosity,
         "curiosity_emoji": final_curiosity_emoji,
         "main_caption": clean_main,
-        "curiosity_caption": clean_curiosity,
-        "thumbnail_phrase": thumb_phrase
+        "curiosity_caption": clean_curiosity
     }
 
     return result
@@ -343,11 +294,8 @@ def build_user_prompt(context: str, previous_generations: list = None) -> str:
         for i, gen in enumerate(previous_generations[-6:], 1):
             m = gen.get("main_caption", "")
             c = gen.get("curiosity_caption", "")
-            t = gen.get("thumbnail_phrase", "")
-            if m or c or t:
+            if m or c:
                 entry = f"Previous #{i}: Main=\"{m}\" | Reveal=\"{c}\""
-                if t:
-                    entry += f" | Thumbnail=\"{t}\""
                 avoidance_list.append(entry)
         
         if avoidance_list:

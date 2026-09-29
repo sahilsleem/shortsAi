@@ -1,5 +1,5 @@
 """
-src/ai_router.py - Multi-Provider AI Fallback System for Saba Bollywood Content Writer.
+src/ai_router.py - Multi-Provider AI Fallback System for ShortsAI Content Writer.
 
 Provider Chain:
 1. Gemini (primary)
@@ -9,11 +9,10 @@ Provider Chain:
 
 Features:
 - Standard library urllib only (zero third-party AI runtime dependencies).
-- Strict Saba Bollywood Master Publishing Package validation:
+- Strict Publishing Package validation:
   * Exactly 10 caption pairs (main_caption + curiosity_caption)
   * Exactly 10 YouTube titles
   * Exactly 3 top_titles
-  * Non-empty thumbnail_phrase
   * Non-empty description
   * Populated provider name (never trusted from API)
 - Session-level in-memory cooldown to avoid hammering rate-limited or broken providers.
@@ -32,7 +31,6 @@ from typing import Tuple, List, Dict, Any, Optional
 from src.gemini_caption import (
     SYSTEM_INSTRUCTION,
     clean_json_text,
-    sanitize_thumbnail_phrase,
     GeminiConfigError,
     GeminiQuotaError,
     GeminiAPIError,
@@ -181,12 +179,12 @@ def format_structural_summary(data: Any, status_code: int = 200) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Master Saba Bollywood Publishing Prompt
+# Master Publishing Prompt
 # ---------------------------------------------------------------------------
 
 MASTER_PUBLISHING_PROMPT = SYSTEM_INSTRUCTION + """
 
-FULL SABA BOLLYWOOD PUBLISHING PACKAGE REQUIREMENTS:
+FULL PUBLISHING PACKAGE REQUIREMENTS:
 Generate a complete social publishing package for YouTube Shorts:
 1. "captions": Exactly 10 distinct, high-impact caption pairs.
    - Each pair MUST contain four distinct fields:
@@ -218,18 +216,17 @@ Generate a complete social publishing package for YouTube Shorts:
      Do not force an angle that doesn't fit the context; choose natural angles supported by the clip.
    - Every one of the 10 options must have its own four fields and its own tailored emojis matching that specific option's emotional angle.
    - VOICE ACROSS ALL 10 OPTIONS:
-     Write in a conversational, relatable Bollywood fan-page voice.
+     Write in a conversational, relatable fan-page voice.
      Use simple everyday English (saw, noticed, stopped, smiled, looked back, walked over, asked, waved, etc.).
      Create emotion through action rather than telling the viewer how to feel.
      NEVER use robotic news clichés ("heartwarming gesture", "captured attention", "left fans stunned", "proceeded to", "netizens", "was seen", "made headlines", "social media went into a frenzy").
 2. "titles": Exactly 10 punchy, viral YouTube Shorts titles (emotional, curiosity-driven, factual, simple English).
 3. "top_titles": Exactly 3 best recommended title selections from the 10 titles.
-4. "thumbnail_phrase": Exactly 1 short visual hook (2-6 words, max 7 words) for the cover thumbnail frame.
-5. "description": An engaging 2-4 sentence YouTube Shorts description sticking strictly to context facts, ending with #Shorts #Bollywood.
+4. "description": An engaging 2-4 sentence YouTube Shorts description sticking strictly to context facts, ending with #Shorts and relevant context hashtags.
 
 FINAL HUMAN TEST:
 Before returning the package, internally ask:
-"Would a real Bollywood fan-page creator actually write this?"
+"Would a real social media creator actually write this?"
 If it sounds like a newspaper, generic AI, or overly complicated English, or if all ten options sound almost identical, rewrite them.
 
 OUTPUT FORMAT:
@@ -250,8 +247,7 @@ Respond with ONLY valid JSON with this exact schema:
   "top_titles": [
     "Top Title 1", "Top Title 2", "Top Title 3"
   ],
-  "thumbnail_phrase": "SHORT VISUAL HOOK 😳",
-  "description": "Engaging context-accurate description text here... #Shorts #Bollywood"
+  "description": "Engaging context-accurate description text here... #Shorts"
 }"""
 
 
@@ -266,11 +262,8 @@ def build_user_prompt(context: str, previous_generations: list = None) -> str:
         for i, gen in enumerate(previous_generations[-6:], 1):
             m = gen.get("main", "") or gen.get("main_caption", "")
             c = gen.get("curiosity", "") or gen.get("curiosity_caption", "")
-            t = gen.get("thumbnail_phrase", "")
-            if m or c or t:
+            if m or c:
                 entry = f"Previous #{i}: Main=\"{m}\" | Reveal=\"{c}\""
-                if t:
-                    entry += f" | Thumbnail=\"{t}\""
                 avoidance_list.append(entry)
 
         if avoidance_list:
@@ -289,15 +282,14 @@ def build_user_prompt(context: str, previous_generations: list = None) -> str:
 
 def validate_content_package(package: dict) -> Tuple[bool, str]:
     """
-    Validates that the returned package contains the complete Saba Bollywood Publishing Package:
+    Validates that the returned package contains the complete Publishing Package:
     1. Exactly 10 caption pairs:
        - Every pair has non-empty 'main' and 'curiosity' text containing no emojis.
        - Every pair has 'main_emoji' and 'curiosity_emoji' as strings (empty string allowed).
        - Automatically normalizes embedded emojis from caption text into dedicated emoji fields when safely possible.
     2. Exactly 10 YouTube titles (every title is non-empty string).
     3. Exactly 3 top_titles (every title is non-empty string).
-    4. thumbnail_phrase is non-empty string.
-    5. description is non-empty string.
+    4. description is non-empty string.
     Returns (is_valid, error_reason).
     """
     if not isinstance(package, dict):
@@ -384,12 +376,7 @@ def validate_content_package(package: dict) -> Tuple[bool, str]:
         if not isinstance(top_title, str) or not top_title.strip():
             return False, f"Top title #{idx+1} is empty or not a string"
 
-    # 4. Thumbnail phrase: non-empty string
-    thumb = str(package.get("thumbnail_phrase", "")).strip()
-    if not thumb:
-        return False, "Missing or empty 'thumbnail_phrase'"
-
-    # 5. Description: non-empty string
+    # 4. Description: non-empty string
     desc = str(package.get("description", "")).strip()
     if not desc:
         return False, "Missing or empty 'description'"
@@ -403,14 +390,10 @@ def normalize_package(data: dict, provider_name: str) -> dict:
     - Sets provider to provider_name (never trusting any provider-supplied value).
     - Sets top-level main, main_emoji, curiosity, curiosity_emoji, main_caption, and curiosity_caption
       from the first caption pair for complete backward compatibility.
-    - Sanitizes thumbnail_phrase.
     - Preserves canonical captions (each containing main, main_emoji, curiosity, curiosity_emoji),
       titles, top_titles, and description.
     """
     captions = data["captions"]
-    thumb_phrase = sanitize_thumbnail_phrase(str(data["thumbnail_phrase"]))
-    if not thumb_phrase:
-        thumb_phrase = str(data["thumbnail_phrase"]).strip()
 
     canonical_captions = []
     for pair in captions:
@@ -436,7 +419,6 @@ def normalize_package(data: dict, provider_name: str) -> dict:
         "curiosity_emoji": first_cap["curiosity_emoji"],
         "main_caption": first_cap["main"],
         "curiosity_caption": first_cap["curiosity"],
-        "thumbnail_phrase": thumb_phrase,
         "captions": canonical_captions,
         "titles": [str(t).strip() for t in data["titles"]],
         "top_titles": [str(t).strip() for t in data["top_titles"]],
@@ -972,13 +954,13 @@ def generate_content_with_fallback(
     max_transient_retries: int = 1
 ) -> dict:
     """
-    Orchestrates multi-provider fallback for the Saba Bollywood Content Writer:
+    Orchestrates multi-provider fallback for the ShortsAI Content Writer:
     - Tries providers in order (default: Gemini -> Groq -> Cerebras -> OpenRouter).
     - Session-level in-memory cooldown prevents pounding rate-limited providers.
     - Transient server errors (500/502/503/timeout) receive at most 1 short retry.
     - Quota (429), auth/config, malformed JSON, and incomplete packages immediately advance.
     - Validates that the full publishing package (10 captions, 10 titles, 3 top titles,
-      thumbnail_phrase, description) is present and non-empty.
+      description) is present and non-empty.
     - Injects the true provider name into the returned package.
     """
     if not context or not context.strip():
@@ -1002,7 +984,7 @@ def generate_content_with_fallback(
             try:
                 raw_data = provider.generate(context, previous_generations)
 
-                # Strict validation of complete Saba Bollywood Publishing Package
+                # Strict validation of complete Publishing Package
                 is_valid, reason = validate_content_package(raw_data)
                 if not is_valid:
                     print(f"[{provider_name.capitalize()}] Incomplete package: {reason}")
@@ -1011,7 +993,7 @@ def generate_content_with_fallback(
                         c_count = len(raw_data["captions"]) if isinstance(raw_data.get("captions"), list) else 0
                         t_count = len(raw_data["titles"]) if isinstance(raw_data.get("titles"), list) else 0
                         top_count = len(raw_data["top_titles"]) if isinstance(raw_data.get("top_titles"), list) else 0
-                        print(f"[{provider_name.capitalize()}] Package structure: keys={pkg_keys} | captions={c_count} | titles={t_count} | top_titles={top_count} | has_thumb={bool(raw_data.get('thumbnail_phrase'))} | has_desc={bool(raw_data.get('description'))}")
+                        print(f"[{provider_name.capitalize()}] Package structure: keys={pkg_keys} | captions={c_count} | titles={t_count} | top_titles={top_count} | has_desc={bool(raw_data.get('description'))}")
                     raise AIIncompletePackageError(f"Incomplete package: {reason}", provider=provider_name)
 
                 # Success: clear cooldown, normalize, and return

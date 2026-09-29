@@ -16,7 +16,6 @@ Tests cover:
 12. Provider session-level cooldown behavior
 13. API keys never appear in logs or exceptions
 14. Frontend-compatible normalized response
-15. Existing thumbnail_phrase preserved and sanitized
 16. Retry/previous-generation avoidance forwarded
 17. Configurable provider order via SHORTSAI_AI_PROVIDERS
 18. Provider name populated strictly by router (untrusted provider spoofing prevented)
@@ -88,8 +87,7 @@ def make_valid_package(prefix: str = "Test") -> dict:
             f"{prefix} Top Title 2",
             f"{prefix} Top Title 3"
         ],
-        "thumbnail_phrase": f"{prefix.upper()} DID THIS 😳",
-        "description": f"{prefix} Salman Khan stopped to meet a fan at Mumbai airport. #Shorts #Bollywood"
+        "description": f"{prefix} Salman Khan stopped to meet a fan at Mumbai airport. #Shorts"
     }
 
 
@@ -112,7 +110,6 @@ def test_gemini_success(monkeypatch):
     assert result["provider"] == "gemini"
     assert result["main_caption"] == expected["captions"][0]["main_caption"]
     assert result["curiosity_caption"] == expected["captions"][0]["curiosity_caption"]
-    assert result["thumbnail_phrase"] == "GEMINI DID THIS 😳"
     assert len(result["captions"]) == 10
     assert len(result["titles"]) == 10
     assert len(result["top_titles"]) == 3
@@ -269,14 +266,12 @@ def test_all_providers_fail_raises_all_providers_failed_error(monkeypatch):
 
 def test_incomplete_package_rejected_and_router_advances(monkeypatch):
     """
-    Test 10: If a provider returns only (main_caption, curiosity_caption, thumbnail_phrase)
     omitting titles, top_titles, or description, it is classified as AIIncompletePackageError
     and the router advances to the next provider.
     """
     incomplete_gemini = {
         "main_caption": "Salman walked down the street, but then...",
         "curiosity_caption": "he spotted an elderly fan",
-        "thumbnail_phrase": "SALMAN STOPPED 😳"
         # Missing: captions list of 10, titles, top_titles, description!
     }
     complete_groq = make_valid_package("Groq")
@@ -381,23 +376,10 @@ def test_frontend_compatible_normalized_response():
     # Frontend expectations:
     assert "main_caption" in normalized
     assert "curiosity_caption" in normalized
-    assert "thumbnail_phrase" in normalized
     assert "provider" in normalized
     assert normalized["provider"] == "groq"
     assert normalized["main_caption"] == raw["captions"][0]["main_caption"]
     assert normalized["curiosity_caption"] == raw["captions"][0]["curiosity_caption"]
-
-
-def test_thumbnail_phrase_sanitization_and_preservation():
-    """Test 15: Thumbnail phrase is sanitized (no hashtags, quotes) and preserved."""
-    raw = make_valid_package("Thumb")
-    raw["thumbnail_phrase"] = '"SALMAN DID THIS" #Viral #Bollywood'
-    normalized = normalize_package(raw, "cerebras")
-
-    assert normalized["thumbnail_phrase"] == "SALMAN DID THIS"
-    assert "#" not in normalized["thumbnail_phrase"]
-    assert '"' not in normalized["thumbnail_phrase"]
-
 
 def test_retry_avoidance_forwarded_to_prompt(monkeypatch):
     """Test 16: Previous generations are formatted into prompt avoidance list."""
@@ -412,8 +394,8 @@ def test_retry_avoidance_forwarded_to_prompt(monkeypatch):
     monkeypatch.setattr(PROVIDER_REGISTRY["groq"], "generate", mock_gen)
 
     prev = [
-        {"main_caption": "Old Main 1", "curiosity_caption": "Old Reveal 1", "thumbnail_phrase": "OLD THUMB 1"},
-        {"main_caption": "Old Main 2", "curiosity_caption": "Old Reveal 2", "thumbnail_phrase": "OLD THUMB 2"}
+        {"main_caption": "Old Main 1", "curiosity_caption": "Old Reveal 1"},
+        {"main_caption": "Old Main 2", "curiosity_caption": "Old Reveal 2"}
     ]
 
     generate_content_with_fallback("Context", previous_generations=prev, provider_order=["groq"])
@@ -421,7 +403,6 @@ def test_retry_avoidance_forwarded_to_prompt(monkeypatch):
     assert captured_prompt is not None
     assert "DO NOT repeat" in captured_prompt
     assert 'Main="Old Main 1"' in captured_prompt
-    assert 'Thumbnail="OLD THUMB 1"' in captured_prompt
 
 
 def test_configurable_provider_order(monkeypatch):
@@ -1216,10 +1197,10 @@ def test_prompt_regression_simple_english():
 
 
 def test_prompt_regression_conversational_fan_page_voice():
-    """Test 48: Prompts enforce real Bollywood fan-page creator voice over robotic news style."""
+    """Test 48: Prompts enforce real social media creator voice over robotic news style."""
     for prompt_name, prompt_text in [("SYSTEM_INSTRUCTION", SYSTEM_INSTRUCTION), ("MASTER_PUBLISHING_PROMPT", MASTER_PUBLISHING_PROMPT)]:
         assert "fan-page creator" in prompt_text.lower(), f"{prompt_name} missing fan-page creator persona"
-        assert "telling another bollywood fan" in prompt_text.lower(), f"{prompt_name} missing peer fan-to-fan framing"
+        assert "telling another viewer" in prompt_text.lower(), f"{prompt_name} missing peer fan-to-fan framing"
         assert "not an ai news writer" in prompt_text.lower(), f"{prompt_name} missing anti-news writer restriction"
 
 
@@ -1306,7 +1287,7 @@ def test_prompt_regression_final_human_test():
     """Test 54: Prompts enforce final internal human check before returning output."""
     for prompt_name, prompt_text in [("SYSTEM_INSTRUCTION", SYSTEM_INSTRUCTION), ("MASTER_PUBLISHING_PROMPT", MASTER_PUBLISHING_PROMPT)]:
         assert "FINAL HUMAN TEST" in prompt_text
-        assert "Would a real Bollywood fan-page creator actually write this?" in prompt_text
+        assert "Would a real social media creator actually write this?" in prompt_text
 
 
 def test_publishing_ui_html_structure_and_location():
@@ -1365,7 +1346,7 @@ def test_publishing_ui_description_populated_and_starts_with_title():
     title = pkg["top_titles"][0]
     raw_desc = pkg["description"]
 
-    # Saba Bollywood description starts with selected title
+    # Description starts with selected title
     if not raw_desc.startswith(title):
         initial_desc = title + "\n\n" + raw_desc
     else:
@@ -1382,7 +1363,7 @@ def test_publishing_ui_changing_title_updates_only_beginning_of_description():
     credits_and_hashtags = (
         "\n\n📌 CREDITS:\n"
         "Some clips/images may be sourced from publicly available platforms...\n\n"
-        "#bollywood #paparazzi #celebrity #bollywoodshorts #shorts"
+        "#paparazzi #celebrity #shorts"
     )
 
     desc = title1 + credits_and_hashtags
@@ -1407,7 +1388,7 @@ def test_publishing_ui_manual_description_edits_preserved():
     user_custom_note = "\n\n[Creator Custom Note: Watch till the end!]"
     credits_and_hashtags = (
         "\n\n📌 CREDITS:\nSome clips sourced from web.\n\n"
-        "#bollywood #shorts"
+        "#shorts"
     )
 
     # User starts with description then manually adds a note
@@ -1458,3 +1439,26 @@ def test_publishing_section_revealed_below_video_after_rendering():
     assert "publishingSection.style.display = 'none'" in html
     # Ensure no modal or new window is opened
     assert "window.open" not in html
+
+
+def test_prompt_no_saba_bollywood_identity():
+    """Verify SYSTEM_INSTRUCTION and MASTER_PUBLISHING_PROMPT do NOT contain 'Saba Bollywood' as channel identity."""
+    from src.ai_router import MASTER_PUBLISHING_PROMPT
+    from src.gemini_caption import SYSTEM_INSTRUCTION
+    assert "Saba Bollywood" not in SYSTEM_INSTRUCTION
+    assert "Saba Bollywood" not in MASTER_PUBLISHING_PROMPT
+
+def test_prompt_channel_neutral():
+    """Verify prompts use generic terms ('short-form video', 'content writer') not channel-specific terms."""
+    from src.ai_router import MASTER_PUBLISHING_PROMPT
+    from src.gemini_caption import SYSTEM_INSTRUCTION
+    assert "social media creator" in MASTER_PUBLISHING_PROMPT
+    assert "fan-page creator" in SYSTEM_INSTRUCTION
+
+def test_cover_ui_absent():
+    """Verify HTML does not contain cover-toggle, btn-download-cover, or Saba Bollywood Cover."""
+    from pathlib import Path
+    html_content = Path("static/index.html").read_text(encoding="utf-8")
+    assert "cover-toggle" not in html_content
+    assert "btn-download-cover" not in html_content
+    assert "Saba Bollywood Cover" not in html_content

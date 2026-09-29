@@ -245,7 +245,7 @@ def render_curiosity_video(
 
 
 # ---------------------------------------------------------------------------
-# Phase 5: Saba Bollywood Cover Frame Pipeline
+# Phase 5: Cover Frame Pipeline (optional, not active by default)
 # ---------------------------------------------------------------------------
 
 def get_audio_properties(video_path: str) -> dict:
@@ -411,7 +411,7 @@ def append_cover_frame(
     1. Validates thumbnail phrase (skips safely if missing).
     2. Runs frame selector on original source footage to find best candidate frame.
     3. Extracts full-resolution candidate frame.
-    4. Composes Saba Bollywood cover frame with thumbnail phrase.
+    4. Composes cover frame with thumbnail phrase.
     5. Saves cover artwork to disk.
     6. Generates exact duration-controlled (0.100s) cover video segment with matched audio properties.
     7. Appends cover segment to the rendered Short.
