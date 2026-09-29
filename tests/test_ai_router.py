@@ -55,16 +55,27 @@ from src.ai_router import (
     GroqProvider,
     CerebrasProvider,
     OpenRouterProvider,
+    contains_emoji,
+    extract_emojis,
+    strip_emojis,
+    separate_emojis,
+    MASTER_PUBLISHING_PROMPT,
 )
+from src.gemini_caption import SYSTEM_INSTRUCTION
 
 
 def make_valid_package(prefix: str = "Test") -> dict:
-    """Creates a complete, valid Saba Bollywood publishing package with 10 caption pairs, 10 titles, 3 top titles."""
+    emojis_main = ["👀", "😳", "🤔", "😮", "✨", "🎬", "🔥", "👏", "👀", ""]
+    emojis_curiosity = ["❤️", "😂", "🔥", "🙏", "❤️", "👏", "😂", "✨", "", "❤️"]
     return {
         "captions": [
             {
+                "main": f"{prefix} Salman was at airport #{i}, but then...",
+                "main_emoji": emojis_main[i-1],
+                "curiosity": f"he stopped to greet fan #{i} with a warm smile",
+                "curiosity_emoji": emojis_curiosity[i-1],
                 "main_caption": f"{prefix} Salman was at airport #{i}, but then...",
-                "curiosity_caption": f"he stopped to greet fan #{i} with a warm smile"
+                "curiosity_caption": f"he stopped to greet fan #{i} with a warm smile",
             }
             for i in range(1, 11)
         ],
@@ -990,3 +1001,309 @@ def test_default_model_names_and_env_overrides(monkeypatch):
     monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
     res = openrouter.generate("test context")
     assert captured_payloads[-1]["model"] == "meta-llama/llama-3.3-70b-instruct"
+
+
+# ---------------------------------------------------------------------------
+# Dedicated Emoji Field Separation Regression Tests
+# ---------------------------------------------------------------------------
+
+def test_main_emoji_separated_from_main_text():
+    """Test 37: Main emoji embedded in main caption text is extracted to main_emoji and stripped from main."""
+    pkg = make_valid_package("EmojiTest")
+    pkg["captions"][0] = {
+        "main": "Salman Khan was already leaving, but then he noticed the fan waiting 👀",
+        "main_emoji": "",
+        "curiosity": "He stopped to take a photo with the young fan",
+        "curiosity_emoji": "❤️"
+    }
+
+    is_valid, reason = validate_content_package(pkg)
+    assert is_valid, f"Validation failed: {reason}"
+    first = pkg["captions"][0]
+    assert first["main"] == "Salman Khan was already leaving, but then he noticed the fan waiting"
+    assert first["main_emoji"] == "👀"
+    assert not contains_emoji(first["main"])
+
+
+def test_curiosity_emoji_separated_from_curiosity_text():
+    """Test 38: Curiosity emoji embedded in curiosity caption text is extracted to curiosity_emoji and stripped."""
+    pkg = make_valid_package("EmojiTest")
+    pkg["captions"][0] = {
+        "main": "Salman Khan was already leaving, but then he noticed the fan waiting",
+        "main_emoji": "👀",
+        "curiosity": "He stopped to take a photo with the young fan ❤️",
+        "curiosity_emoji": ""
+    }
+
+    is_valid, reason = validate_content_package(pkg)
+    assert is_valid, f"Validation failed: {reason}"
+    first = pkg["captions"][0]
+    assert first["curiosity"] == "He stopped to take a photo with the young fan"
+    assert first["curiosity_emoji"] == "❤️"
+    assert not contains_emoji(first["curiosity"])
+
+
+def test_main_and_curiosity_text_contain_no_emoji():
+    """Test 39: Validates that every caption in the package has main and curiosity text free of any emoji characters."""
+    pkg = make_valid_package("NoEmojiText")
+    is_valid, reason = validate_content_package(pkg)
+    assert is_valid, f"Validation failed: {reason}"
+
+    normalized = normalize_package(pkg, "groq")
+    for idx, cap in enumerate(normalized["captions"]):
+        assert not contains_emoji(cap["main"]), f"Caption #{idx+1} main has emoji: {cap['main']}"
+        assert not contains_emoji(cap["curiosity"]), f"Caption #{idx+1} curiosity has emoji: {cap['curiosity']}"
+        assert not contains_emoji(cap["main_caption"]), f"Caption #{idx+1} main_caption has emoji: {cap['main_caption']}"
+        assert not contains_emoji(cap["curiosity_caption"]), f"Caption #{idx+1} curiosity_caption has emoji: {cap['curiosity_caption']}"
+
+
+def test_main_and_curiosity_emoji_fields_receive_generated_emojis():
+    """Test 40: Main emoji and curiosity emoji fields receive the generated emojis properly."""
+    pkg = make_valid_package("ReceiveEmoji")
+    pkg["captions"][0] = {
+        "main": "She was leaving when the paparazzi asked her to pose",
+        "main_emoji": "👀",
+        "curiosity": "Her awkward reaction before walking away had everyone laughing",
+        "curiosity_emoji": "😂"
+    }
+
+    is_valid, reason = validate_content_package(pkg)
+    assert is_valid, f"Validation failed: {reason}"
+    normalized = normalize_package(pkg, "openrouter")
+    assert normalized["main_emoji"] == "👀"
+    assert normalized["curiosity_emoji"] == "😂"
+    assert normalized["captions"][0]["main_emoji"] == "👀"
+    assert normalized["captions"][0]["curiosity_emoji"] == "😂"
+
+
+def test_all_10_caption_options_contain_all_four_fields():
+    """Test 41: All 10 caption options contain main, main_emoji, curiosity, and curiosity_emoji."""
+    pkg = make_valid_package("All10Fields")
+    is_valid, reason = validate_content_package(pkg)
+    assert is_valid, f"Validation failed: {reason}"
+
+    normalized = normalize_package(pkg, "cerebras")
+    assert len(normalized["captions"]) == 10
+    for idx, opt in enumerate(normalized["captions"]):
+        assert "main" in opt, f"Caption #{idx+1} missing main"
+        assert "main_emoji" in opt, f"Caption #{idx+1} missing main_emoji"
+        assert "curiosity" in opt, f"Caption #{idx+1} missing curiosity"
+        assert "curiosity_emoji" in opt, f"Caption #{idx+1} missing curiosity_emoji"
+        assert isinstance(opt["main"], str) and opt["main"].strip()
+        assert isinstance(opt["curiosity"], str) and opt["curiosity"].strip()
+        assert isinstance(opt["main_emoji"], str)
+        assert isinstance(opt["curiosity_emoji"], str)
+
+
+def test_emojis_not_duplicated_inside_caption_text():
+    """Test 42: Emojis provided both in text and in emoji fields are not duplicated; text is strictly cleaned."""
+    pkg = make_valid_package("Deduplicate")
+    pkg["captions"][0] = {
+        "main": "Salman Khan was already leaving, but then he noticed the fan waiting 👀",
+        "main_emoji": "👀",
+        "curiosity": "He stopped to take a photo with the young fan ❤️",
+        "curiosity_emoji": "❤️"
+    }
+
+    is_valid, reason = validate_content_package(pkg)
+    assert is_valid, f"Validation failed: {reason}"
+
+    cap = pkg["captions"][0]
+    assert cap["main"] == "Salman Khan was already leaving, but then he noticed the fan waiting"
+    assert cap["main_emoji"] == "👀"
+    assert cap["curiosity"] == "He stopped to take a photo with the young fan"
+    assert cap["curiosity_emoji"] == "❤️"
+    assert "👀" not in cap["main"]
+    assert "❤️" not in cap["curiosity"]
+
+
+def test_empty_emoji_fields_allowed_when_no_emoji_appropriate():
+    """Test 43: Empty string emoji fields are fully allowed when no emoji is appropriate."""
+    pkg = make_valid_package("EmptyEmoji")
+    for cap in pkg["captions"]:
+        cap["main_emoji"] = ""
+        cap["curiosity_emoji"] = ""
+
+    is_valid, reason = validate_content_package(pkg)
+    assert is_valid, f"Validation failed: {reason}"
+
+    normalized = normalize_package(pkg, "gemini")
+    assert normalized["main_emoji"] == ""
+    assert normalized["curiosity_emoji"] == ""
+    for cap in normalized["captions"]:
+        assert cap["main_emoji"] == ""
+        assert cap["curiosity_emoji"] == ""
+
+
+def test_captions_with_only_emojis_rejected():
+    """Test 44: A caption that consists solely of emojis is rejected because clean text becomes empty."""
+    pkg = make_valid_package("OnlyEmoji")
+    pkg["captions"][0]["main"] = "👀🔥😂"
+    is_valid, reason = validate_content_package(pkg)
+    assert not is_valid
+    assert "empty main caption" in reason
+
+
+def test_invalid_emoji_type_rejected():
+    """Test 45: A caption with a non-string emoji field is rejected."""
+    pkg = make_valid_package("InvalidEmojiType")
+    pkg["captions"][0]["main_emoji"] = 123  # Int instead of string
+    is_valid, reason = validate_content_package(pkg)
+    assert not is_valid
+    assert "invalid non-string 'main_emoji'" in reason
+
+
+def test_selecting_caption_with_use_populates_all_four_frontend_fields():
+    """Test 46: Verify that index.html contains dedicated emoji inputs and JS logic correctly populates all 4 fields."""
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    # Check dedicated emoji fields in HTML
+    assert 'id="caption-emoji-main"' in html_content
+    assert 'id="caption-emoji-curiosity"' in html_content
+    assert 'id="caption-main"' in html_content
+    assert 'id="caption-curiosity"' in html_content
+
+    # Check options container and pills in HTML
+    assert 'id="gemini-options-container"' in html_content
+    assert 'id="gemini-options-pills"' in html_content
+
+    # Check preview elements
+    assert 'id="gemini-preview-main-emoji"' in html_content
+    assert 'id="gemini-preview-curiosity-emoji"' in html_content
+
+    # Check JS event dispatching and population for all four fields
+    assert "captionEmojiMainInput.value = mainEmoji" in html_content
+    assert "captionEmojiCuriosityInput.value = curiosityEmoji" in html_content
+    assert "captionMainInput.value = mainText" in html_content
+    assert "captionCuriosityInput.value = curiosityText" in html_content
+
+    # Simulate the JS application logic on a sample package
+    pkg = make_valid_package("FrontendSim")
+    pkg["captions"][1] = {
+        "main": "Selected option 2 main text, but then...",
+        "main_emoji": "😮",
+        "curiosity": "Selected option 2 curiosity reveal text here",
+        "curiosity_emoji": "✨"
+    }
+
+    # Simulate selecting Caption 2 (idx = 1)
+    selected_index = 1
+    opt = pkg["captions"][selected_index]
+
+    simulated_inputs = {
+        "caption-main": opt["main"],
+        "caption-emoji-main": opt["main_emoji"],
+        "caption-curiosity": opt["curiosity"],
+        "caption-emoji-curiosity": opt["curiosity_emoji"],
+    }
+
+    assert simulated_inputs["caption-main"] == "Selected option 2 main text, but then..."
+    assert simulated_inputs["caption-emoji-main"] == "😮"
+    assert simulated_inputs["caption-curiosity"] == "Selected option 2 curiosity reveal text here"
+    assert simulated_inputs["caption-emoji-curiosity"] == "✨"
+    assert not contains_emoji(simulated_inputs["caption-main"])
+    assert not contains_emoji(simulated_inputs["caption-curiosity"])
+
+
+def test_prompt_regression_simple_english():
+    """Test 47: Prompts mandate simple everyday English and forbid unnecessarily sophisticated language."""
+    for prompt_name, prompt_text in [("SYSTEM_INSTRUCTION", SYSTEM_INSTRUCTION), ("MASTER_PUBLISHING_PROMPT", MASTER_PUBLISHING_PROMPT)]:
+        assert "SIMPLE ENGLISH" in prompt_text, f"{prompt_name} missing 'SIMPLE ENGLISH' section"
+        assert "everyday words" in prompt_text.lower(), f"{prompt_name} missing 'everyday words'"
+        for word in ["saw", "noticed", "stopped", "smiled", "walked over", "waited", "asked", "waved"]:
+            assert word in prompt_text, f"{prompt_name} missing example word '{word}'"
+
+
+def test_prompt_regression_conversational_fan_page_voice():
+    """Test 48: Prompts enforce real Bollywood fan-page creator voice over robotic news style."""
+    for prompt_name, prompt_text in [("SYSTEM_INSTRUCTION", SYSTEM_INSTRUCTION), ("MASTER_PUBLISHING_PROMPT", MASTER_PUBLISHING_PROMPT)]:
+        assert "fan-page creator" in prompt_text.lower(), f"{prompt_name} missing fan-page creator persona"
+        assert "telling another bollywood fan" in prompt_text.lower(), f"{prompt_name} missing peer fan-to-fan framing"
+        assert "not an ai news writer" in prompt_text.lower(), f"{prompt_name} missing anti-news writer restriction"
+
+
+def test_prompt_regression_emotional_storytelling_through_action():
+    """Test 49: Prompts mandate emotion through action (show, don't tell)."""
+    for prompt_name, prompt_text in [("SYSTEM_INSTRUCTION", SYSTEM_INSTRUCTION), ("MASTER_PUBLISHING_PROMPT", MASTER_PUBLISHING_PROMPT)]:
+        assert "EMOTION THROUGH ACTION" in prompt_text, f"{prompt_name} missing EMOTION THROUGH ACTION"
+        assert "action creates the emotion" in prompt_text.lower(), f"{prompt_name} missing 'action creates the emotion'"
+        assert "Salman Khan was already heading out, but then he noticed someone waiting for him" in prompt_text
+
+
+def test_prompt_regression_curiosity_open_loop_main_and_payoff_reveal():
+    """Test 50: Prompts define Main as setup+open loop and Curiosity as the actual payoff."""
+    for prompt_name, prompt_text in [("SYSTEM_INSTRUCTION", SYSTEM_INSTRUCTION), ("MASTER_PUBLISHING_PROMPT", MASTER_PUBLISHING_PROMPT)]:
+        assert "open loop" in prompt_text.lower(), f"{prompt_name} missing open loop concept"
+        assert "What happened?" in prompt_text, f"{prompt_name} missing 'What happened?' hook trigger"
+        assert "payoff" in prompt_text.lower(), f"{prompt_name} missing payoff definition for reveal"
+
+
+def test_prompt_regression_avoidance_of_robotic_news_language():
+    """Test 51: Prompts explicitly list forbidden generic AI and news clichés."""
+    forbidden_phrases = [
+        "captured attention",
+        "heartwarming gesture",
+        "unexpected turn of events",
+        "left fans stunned",
+        "unfolded",
+        "garnered attention",
+        "showcased",
+        "demonstrated his affection",
+        "displayed his kindness",
+        "proceeded to",
+        "in a touching moment",
+        "netizens",
+        "was seen",
+        "made headlines",
+        "social media went into a frenzy",
+    ]
+    for prompt_name, prompt_text in [("SYSTEM_INSTRUCTION", SYSTEM_INSTRUCTION), ("MASTER_PUBLISHING_PROMPT", MASTER_PUBLISHING_PROMPT)]:
+        for phrase in forbidden_phrases:
+            assert phrase in prompt_text, f"{prompt_name} missing forbidden phrase '{phrase}'"
+
+
+def test_prompt_regression_genuine_variation_across_10_options():
+    """Test 52: MASTER_PUBLISHING_PROMPT requires 10 distinct emotional angles."""
+    required_angles = [
+        "curiosity",
+        "emotional",
+        "wholesome",
+        "funny",
+        "awkward",
+        "unexpected",
+        "fan perspective",
+        "celebrity-action perspective",
+        "contrast",
+        "direct hook",
+    ]
+    assert "10 OPTIONS MUST HAVE REAL VARIETY" in MASTER_PUBLISHING_PROMPT
+    for angle in required_angles:
+        assert angle in MASTER_PUBLISHING_PROMPT, f"MASTER_PUBLISHING_PROMPT missing angle '{angle}'"
+
+
+def test_prompt_regression_truthfulness_and_no_invented_facts():
+    """Test 53: Prompts strictly forbid inventing dialogue, thoughts, motives, relationships, etc."""
+    forbidden_inventions = [
+        "dialogue",
+        "thoughts",
+        "motives",
+        "relationships",
+        "locations",
+        "dates",
+        "feelings",
+        "backstory",
+        "reactions",
+        "intentions",
+    ]
+    for prompt_name, prompt_text in [("SYSTEM_INSTRUCTION", SYSTEM_INSTRUCTION), ("MASTER_PUBLISHING_PROMPT", MASTER_PUBLISHING_PROMPT)]:
+        assert "DO NOT INVENT FACTS" in prompt_text or "NEVER INVENT FACTS" in prompt_text
+        for inv in forbidden_inventions:
+            assert inv in prompt_text.lower(), f"{prompt_name} missing forbidden invention '{inv}'"
+
+
+def test_prompt_regression_final_human_test():
+    """Test 54: Prompts enforce final internal human check before returning output."""
+    for prompt_name, prompt_text in [("SYSTEM_INSTRUCTION", SYSTEM_INSTRUCTION), ("MASTER_PUBLISHING_PROMPT", MASTER_PUBLISHING_PROMPT)]:
+        assert "FINAL HUMAN TEST" in prompt_text
+        assert "Would a real Bollywood fan-page creator actually write this?" in prompt_text

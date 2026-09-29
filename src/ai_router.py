@@ -36,6 +36,10 @@ from src.gemini_caption import (
     GeminiConfigError,
     GeminiQuotaError,
     GeminiAPIError,
+    contains_emoji,
+    extract_emojis,
+    strip_emojis,
+    separate_emojis,
 )
 
 # ---------------------------------------------------------------------------
@@ -185,22 +189,58 @@ MASTER_PUBLISHING_PROMPT = SYSTEM_INSTRUCTION + """
 FULL SABA BOLLYWOOD PUBLISHING PACKAGE REQUIREMENTS:
 Generate a complete social publishing package for YouTube Shorts:
 1. "captions": Exactly 10 distinct, high-impact caption pairs.
-   - Each pair must contain "main_caption" and "curiosity_caption".
-   - Each "main_caption" must have a comma separating the setup and hook, formatted for balanced two-line visual composition.
-   - Each "curiosity_caption" must complete the reveal with enough substance for two lines.
-   - All 10 pairs must explore genuinely different angles, hooks, and rhythms without repeating.
-2. "titles": Exactly 10 punchy, viral YouTube Shorts titles (emotional, curiosity-driven, factual).
+   - Each pair MUST contain four distinct fields:
+     * "main": Main caption text (Setup + Hook). CLEAN TEXT ONLY. Absolutely NO emojis inside "main".
+     * "main_emoji": Main caption emoji (0-2 emojis). Single string containing ONLY the intended emoji(s) (e.g. "👀" or "😳" or "🤔"). Empty string "" if no emoji fits.
+     * "curiosity": Curiosity/Reveal caption text (The Reveal / Payoff). CLEAN TEXT ONLY. Absolutely NO emojis inside "curiosity".
+     * "curiosity_emoji": Curiosity/Reveal caption emoji (0-2 emojis). Single string containing ONLY the intended emoji(s) (e.g. "❤️" or "😂" or "🔥"). Empty string "" if no emoji fits.
+   - CRITICAL EMOJI SEPARATION:
+     * Keep caption text and emojis COMPLETELY SEPARATE.
+     * Do NOT put emojis into "main" or "curiosity".
+     * Emojis belong ONLY in "main_emoji" and "curiosity_emoji".
+     * Emojis must complement the sentence emotionally and naturally (e.g. surprise "👀", emotion "❤️", humor "😂").
+     * Keep emoji strings short (0–2 emojis, usually one strong emoji). Never output long strings like "😂😂😂🔥🔥👀👀❤️❤️".
+   - Each "main" must have a comma separating the setup and hook, formatted for balanced two-line visual composition.
+   - Each "curiosity" must complete the reveal with enough substance for two lines.
+   - 10 OPTIONS MUST HAVE REAL VARIETY:
+     Do NOT create ten versions that merely replace words or rephrase the same sentence.
+     Use genuinely different angles when supported by the context:
+     1. curiosity (open-loop curiosity hook: makes viewer wonder what happened next)
+     2. emotional (focusing on feelings, heartwarming interaction, or touching reaction)
+     3. wholesome (warm, sweet, respectful interaction)
+     4. funny (humorous, amusing, or playful angle)
+     5. awkward (funny awkward moment, hesitation, or relatable pause)
+     6. unexpected (element of surprise, sudden turn, or unexpected gesture)
+     7. fan perspective (how it looked and felt from the fan's or crowd's point of view)
+     8. celebrity-action perspective (what the celebrity specifically decided to do)
+     9. contrast (expectation vs reality, or what could have happened vs what actually happened)
+     10. direct hook (short, punchy, immediate setup)
+     Do not force an angle that doesn't fit the context; choose natural angles supported by the clip.
+   - Every one of the 10 options must have its own four fields and its own tailored emojis matching that specific option's emotional angle.
+   - VOICE ACROSS ALL 10 OPTIONS:
+     Write in a conversational, relatable Bollywood fan-page voice.
+     Use simple everyday English (saw, noticed, stopped, smiled, looked back, walked over, asked, waved, etc.).
+     Create emotion through action rather than telling the viewer how to feel.
+     NEVER use robotic news clichés ("heartwarming gesture", "captured attention", "left fans stunned", "proceeded to", "netizens", "was seen", "made headlines", "social media went into a frenzy").
+2. "titles": Exactly 10 punchy, viral YouTube Shorts titles (emotional, curiosity-driven, factual, simple English).
 3. "top_titles": Exactly 3 best recommended title selections from the 10 titles.
 4. "thumbnail_phrase": Exactly 1 short visual hook (2-6 words, max 7 words) for the cover thumbnail frame.
 5. "description": An engaging 2-4 sentence YouTube Shorts description sticking strictly to context facts, ending with #Shorts #Bollywood.
+
+FINAL HUMAN TEST:
+Before returning the package, internally ask:
+"Would a real Bollywood fan-page creator actually write this?"
+If it sounds like a newspaper, generic AI, or overly complicated English, or if all ten options sound almost identical, rewrite them.
 
 OUTPUT FORMAT:
 Respond with ONLY valid JSON with this exact schema:
 {
   "captions": [
     {
-      "main_caption": "Setup with comma, hook phrase here...",
-      "curiosity_caption": "Resolution completing the action with substance here"
+      "main": "Setup with comma, hook phrase here...",
+      "main_emoji": "👀",
+      "curiosity": "Resolution completing the action with substance here",
+      "curiosity_emoji": "❤️"
     }
   ],
   "titles": [
@@ -224,8 +264,8 @@ def build_user_prompt(context: str, previous_generations: list = None) -> str:
     if previous_generations and len(previous_generations) > 0:
         avoidance_list = []
         for i, gen in enumerate(previous_generations[-6:], 1):
-            m = gen.get("main_caption", "")
-            c = gen.get("curiosity_caption", "")
+            m = gen.get("main", "") or gen.get("main_caption", "")
+            c = gen.get("curiosity", "") or gen.get("curiosity_caption", "")
             t = gen.get("thumbnail_phrase", "")
             if m or c or t:
                 entry = f"Previous #{i}: Main=\"{m}\" | Reveal=\"{c}\""
@@ -250,7 +290,10 @@ def build_user_prompt(context: str, previous_generations: list = None) -> str:
 def validate_content_package(package: dict) -> Tuple[bool, str]:
     """
     Validates that the returned package contains the complete Saba Bollywood Publishing Package:
-    1. Exactly 10 caption pairs (every pair has non-empty main_caption and curiosity_caption).
+    1. Exactly 10 caption pairs:
+       - Every pair has non-empty 'main' and 'curiosity' text containing no emojis.
+       - Every pair has 'main_emoji' and 'curiosity_emoji' as strings (empty string allowed).
+       - Automatically normalizes embedded emojis from caption text into dedicated emoji fields when safely possible.
     2. Exactly 10 YouTube titles (every title is non-empty string).
     3. Exactly 3 top_titles (every title is non-empty string).
     4. thumbnail_phrase is non-empty string.
@@ -266,17 +309,60 @@ def validate_content_package(package: dict) -> Tuple[bool, str]:
         return False, "Missing or invalid 'captions' list"
     if len(captions) != 10:
         return False, f"Expected exactly 10 caption pairs, got {len(captions)}"
+
     for idx, pair in enumerate(captions):
         if not isinstance(pair, dict):
             return False, f"Caption pair #{idx+1} is not a dictionary"
-        main = str(pair.get("main_caption", "")).strip()
-        curiosity = str(pair.get("curiosity_caption", "")).strip()
-        if not main:
-            return False, f"Caption pair #{idx+1} has empty main_caption"
-        if not curiosity:
-            return False, f"Caption pair #{idx+1} has empty curiosity_caption"
-        if "{" in main or "}" in main or "{" in curiosity or "}" in curiosity:
+
+        has_main_key = "main" in pair or "main_caption" in pair
+        has_curiosity_key = "curiosity" in pair or "curiosity_caption" in pair
+
+        if not has_main_key:
+            return False, f"Caption pair #{idx+1} missing 'main' caption"
+        if not has_curiosity_key:
+            return False, f"Caption pair #{idx+1} missing 'curiosity' caption"
+
+        raw_main = pair.get("main") if "main" in pair else pair.get("main_caption")
+        raw_curiosity = pair.get("curiosity") if "curiosity" in pair else pair.get("curiosity_caption")
+
+        if not isinstance(raw_main, str):
+            return False, f"Caption pair #{idx+1} has non-string 'main'"
+        if not isinstance(raw_curiosity, str):
+            return False, f"Caption pair #{idx+1} has non-string 'curiosity'"
+
+        raw_main_emoji = pair.get("main_emoji", "")
+        raw_curiosity_emoji = pair.get("curiosity_emoji", "")
+        if not isinstance(raw_main_emoji, str):
+            return False, f"Caption pair #{idx+1} has invalid non-string 'main_emoji'"
+        if not isinstance(raw_curiosity_emoji, str):
+            return False, f"Caption pair #{idx+1} has invalid non-string 'curiosity_emoji'"
+
+        clean_main, embedded_m_emojis = separate_emojis(raw_main)
+        clean_curiosity, embedded_c_emojis = separate_emojis(raw_curiosity)
+
+        if not clean_main:
+            return False, f"Caption pair #{idx+1} has empty main caption"
+        if not clean_curiosity:
+            return False, f"Caption pair #{idx+1} has empty curiosity caption"
+
+        if contains_emoji(clean_main):
+            return False, f"Caption pair #{idx+1} 'main' still contains emojis"
+        if contains_emoji(clean_curiosity):
+            return False, f"Caption pair #{idx+1} 'curiosity' still contains emojis"
+
+        if "{" in clean_main or "}" in clean_main or "{" in clean_curiosity or "}" in clean_curiosity:
             return False, f"Caption pair #{idx+1} contains unparsed JSON syntax"
+
+        final_main_emoji = extract_emojis(raw_main_emoji) or embedded_m_emojis
+        final_curiosity_emoji = extract_emojis(raw_curiosity_emoji) or embedded_c_emojis
+
+        # Update in-place so downstream callers receive normalized package
+        pair["main"] = clean_main
+        pair["main_emoji"] = final_main_emoji
+        pair["curiosity"] = clean_curiosity
+        pair["curiosity_emoji"] = final_curiosity_emoji
+        pair["main_caption"] = clean_main
+        pair["curiosity_caption"] = clean_curiosity
 
     # 2. Titles: exactly 10
     titles = package.get("titles")
@@ -315,22 +401,43 @@ def normalize_package(data: dict, provider_name: str) -> dict:
     """
     Normalizes a validated publishing package:
     - Sets provider to provider_name (never trusting any provider-supplied value).
-    - Sets top-level main_caption and curiosity_caption from the first caption pair
-      for complete backward compatibility with the existing frontend.
+    - Sets top-level main, main_emoji, curiosity, curiosity_emoji, main_caption, and curiosity_caption
+      from the first caption pair for complete backward compatibility.
     - Sanitizes thumbnail_phrase.
-    - Preserves captions, titles, top_titles, and description.
+    - Preserves canonical captions (each containing main, main_emoji, curiosity, curiosity_emoji),
+      titles, top_titles, and description.
     """
     captions = data["captions"]
     thumb_phrase = sanitize_thumbnail_phrase(str(data["thumbnail_phrase"]))
     if not thumb_phrase:
         thumb_phrase = str(data["thumbnail_phrase"]).strip()
 
+    canonical_captions = []
+    for pair in captions:
+        clean_main = str(pair.get("main", "")).strip()
+        clean_curiosity = str(pair.get("curiosity", "")).strip()
+        main_emoji = str(pair.get("main_emoji", "")).strip()
+        curiosity_emoji = str(pair.get("curiosity_emoji", "")).strip()
+        canonical_captions.append({
+            "main": clean_main,
+            "main_emoji": main_emoji,
+            "curiosity": clean_curiosity,
+            "curiosity_emoji": curiosity_emoji,
+            "main_caption": clean_main,
+            "curiosity_caption": clean_curiosity,
+        })
+
+    first_cap = canonical_captions[0]
     return {
         "provider": provider_name,
-        "main_caption": captions[0]["main_caption"],
-        "curiosity_caption": captions[0]["curiosity_caption"],
+        "main": first_cap["main"],
+        "main_emoji": first_cap["main_emoji"],
+        "curiosity": first_cap["curiosity"],
+        "curiosity_emoji": first_cap["curiosity_emoji"],
+        "main_caption": first_cap["main"],
+        "curiosity_caption": first_cap["curiosity"],
         "thumbnail_phrase": thumb_phrase,
-        "captions": captions,
+        "captions": canonical_captions,
         "titles": [str(t).strip() for t in data["titles"]],
         "top_titles": [str(t).strip() for t in data["top_titles"]],
         "description": str(data["description"]).strip()

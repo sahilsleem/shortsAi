@@ -363,14 +363,27 @@
                 <div id="gemini-error" style="display: none; color: #dc2626; font-size: 13px; font-weight: 500; margin-top: 10px; line-height: 1.4;"></div>
                 <div id="gemini-result-card" style="display: none; margin-top: 16px; padding: 14px; background: #ffffff; border: 1px solid #e0e7ff; border-radius: 12px; box-shadow: var(--shadow-sm);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Main Caption</div>
+                        <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Generated Captions</div>
                         <div id="gemini-provider-badge" style="font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: none;"></div>
                     </div>
+
+                    <div id="gemini-options-container" style="display: none; margin-bottom: 12px;">
+                        <div style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 6px;">Select Caption Option (1–10):</div>
+                        <div id="gemini-options-pills" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch;"></div>
+                    </div>
+
                     <div style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                            <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Main Caption</div>
+                            <span id="gemini-preview-main-emoji" style="font-size: 16px;"></span>
+                        </div>
                         <div id="gemini-preview-main" style="font-size: 14px; font-weight: 600; color: var(--text-main); line-height: 1.4;"></div>
                     </div>
                     <div style="margin-bottom: 14px;">
-                        <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Curiosity Caption</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                            <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Curiosity Caption</div>
+                            <span id="gemini-preview-curiosity-emoji" style="font-size: 16px;"></span>
+                        </div>
                         <div id="gemini-preview-curiosity" style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-top: 3px; line-height: 1.4;"></div>
                     </div>
                     <div id="gemini-preview-thumbnail-container" style="margin-bottom: 14px; display: none;">
@@ -550,6 +563,10 @@
         const geminiResultCard = document.getElementById('gemini-result-card');
         const geminiPreviewMain = document.getElementById('gemini-preview-main');
         const geminiPreviewCuriosity = document.getElementById('gemini-preview-curiosity');
+        const geminiPreviewMainEmoji = document.getElementById('gemini-preview-main-emoji');
+        const geminiPreviewCuriosityEmoji = document.getElementById('gemini-preview-curiosity-emoji');
+        const geminiOptionsContainer = document.getElementById('gemini-options-container');
+        const geminiOptionsPills = document.getElementById('gemini-options-pills');
         const geminiPreviewThumbnailContainer = document.getElementById('gemini-preview-thumbnail-container');
         const geminiPreviewThumbnail = document.getElementById('gemini-preview-thumbnail');
         const btnGeminiRetry = document.getElementById('btn-gemini-retry');
@@ -557,6 +574,64 @@
 
         let recentGenerations = [];
         let currentGeneratedPair = null;
+        let selectedCaptionIndex = 0;
+
+        function updateCaptionPreview(idx) {
+            if (!currentGeneratedPair) return;
+            selectedCaptionIndex = idx;
+            const captions = currentGeneratedPair.captions || [];
+            const opt = (captions.length > idx) ? captions[idx] : currentGeneratedPair;
+
+            const mainText = opt.main || opt.main_caption || '';
+            const mainEmoji = opt.main_emoji || '';
+            const curiosityText = opt.curiosity || opt.curiosity_caption || '';
+            const curiosityEmoji = opt.curiosity_emoji || '';
+
+            if (geminiPreviewMain) geminiPreviewMain.innerText = mainText;
+            if (geminiPreviewMainEmoji) geminiPreviewMainEmoji.innerText = mainEmoji;
+            if (geminiPreviewCuriosity) geminiPreviewCuriosity.innerText = curiosityText;
+            if (geminiPreviewCuriosityEmoji) geminiPreviewCuriosityEmoji.innerText = curiosityEmoji;
+
+            if (geminiOptionsPills) {
+                const pills = geminiOptionsPills.querySelectorAll('.toggle-btn');
+                pills.forEach((p, pIdx) => {
+                    if (pIdx === idx) {
+                        p.classList.add('active');
+                        p.style.background = '#4f46e5';
+                        p.style.color = '#ffffff';
+                        p.style.borderColor = '#4f46e5';
+                    } else {
+                        p.classList.remove('active');
+                        p.style.background = '#f1f5f9';
+                        p.style.color = 'var(--text-main)';
+                        p.style.borderColor = 'var(--border-color)';
+                    }
+                });
+            }
+        }
+
+        function populateCaptionOptions(captions) {
+            if (!geminiOptionsPills || !geminiOptionsContainer) return;
+            geminiOptionsPills.innerHTML = '';
+            if (!captions || captions.length <= 1) {
+                geminiOptionsContainer.style.display = 'none';
+                return;
+            }
+            geminiOptionsContainer.style.display = 'block';
+            captions.forEach((cap, idx) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'toggle-btn' + (idx === selectedCaptionIndex ? ' active' : '');
+                btn.style.padding = '6px 12px';
+                btn.style.fontSize = '12px';
+                btn.style.whiteSpace = 'nowrap';
+                btn.style.borderRadius = '6px';
+                const emojiIcon = cap.main_emoji || cap.curiosity_emoji || '';
+                btn.innerText = `Caption ${idx + 1}${emojiIcon ? ' ' + emojiIcon : ''}`;
+                btn.onclick = () => updateCaptionPreview(idx);
+                geminiOptionsPills.appendChild(btn);
+            });
+        }
 
         async function requestGeminiCaptions() {
             const contextText = geminiContext.value.trim();
@@ -589,13 +664,16 @@
 
                 currentGeneratedPair = data;
                 recentGenerations.push({
-                    main_caption: data.main_caption,
-                    curiosity_caption: data.curiosity_caption,
+                    main_caption: data.main_caption || data.main || "",
+                    curiosity_caption: data.curiosity_caption || data.curiosity || "",
+                    main: data.main || data.main_caption || "",
+                    curiosity: data.curiosity || data.curiosity_caption || "",
                     thumbnail_phrase: data.thumbnail_phrase || ""
                 });
 
-                geminiPreviewMain.innerText = data.main_caption;
-                geminiPreviewCuriosity.innerText = data.curiosity_caption;
+                selectedCaptionIndex = 0;
+                populateCaptionOptions(data.captions);
+                updateCaptionPreview(0);
 
                 const providerBadge = document.getElementById('gemini-provider-badge');
                 if (providerBadge) {
@@ -629,14 +707,35 @@
 
         btnGeminiUse.onclick = () => {
             if (!currentGeneratedPair) return;
-            const captionMainInput = document.getElementById('caption-main');
-            const captionCuriosityInput = document.getElementById('caption-curiosity');
-            
-            captionMainInput.value = currentGeneratedPair.main_caption;
-            captionCuriosityInput.value = currentGeneratedPair.curiosity_caption;
+            const captions = currentGeneratedPair.captions || [];
+            const opt = (captions.length > selectedCaptionIndex) ? captions[selectedCaptionIndex] : currentGeneratedPair;
 
-            captionMainInput.dispatchEvent(new Event('input', { bubbles: true }));
-            captionCuriosityInput.dispatchEvent(new Event('input', { bubbles: true }));
+            const mainText = opt.main || opt.main_caption || '';
+            const mainEmoji = opt.main_emoji || '';
+            const curiosityText = opt.curiosity || opt.curiosity_caption || '';
+            const curiosityEmoji = opt.curiosity_emoji || '';
+
+            const captionMainInput = document.getElementById('caption-main');
+            const captionEmojiMainInput = document.getElementById('caption-emoji-main');
+            const captionCuriosityInput = document.getElementById('caption-curiosity');
+            const captionEmojiCuriosityInput = document.getElementById('caption-emoji-curiosity');
+
+            if (captionMainInput) {
+                captionMainInput.value = mainText;
+                captionMainInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (captionEmojiMainInput) {
+                captionEmojiMainInput.value = mainEmoji;
+                captionEmojiMainInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (captionCuriosityInput) {
+                captionCuriosityInput.value = curiosityText;
+                captionCuriosityInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (captionEmojiCuriosityInput) {
+                captionEmojiCuriosityInput.value = curiosityEmoji;
+                captionEmojiCuriosityInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
 
             const origText = btnGeminiUse.innerText;
             btnGeminiUse.innerText = "✓ Applied!";
@@ -644,7 +743,9 @@
                 btnGeminiUse.innerText = origText;
             }, 1500);
 
-            captionMainInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (captionMainInput) {
+                captionMainInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         };
 
         uploadArea.onclick = () => fileInput.click();

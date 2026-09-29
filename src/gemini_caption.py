@@ -24,17 +24,152 @@ class GeminiAPIError(GeminiError):
 
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
+# ---------------------------------------------------------------------------
+# Emoji Separation & Normalization Helpers
+# ---------------------------------------------------------------------------
+
+EMOJI_PATTERN = re.compile(
+    r'['
+    r'\U0001F600-\U0001F64F'  # Emoticons
+    r'\U0001F300-\U0001F5FF'  # Misc Symbols and Pictographs
+    r'\U0001F680-\U0001F6FF'  # Transport and Map Symbols
+    r'\U0001F700-\U0001F77F'  # Alchemical Symbols
+    r'\U0001F780-\U0001F7FF'  # Geometric Shapes Extended
+    r'\U0001F800-\U0001F8FF'  # Supplemental Arrows-C
+    r'\U0001F900-\U0001F9FF'  # Supplemental Symbols and Pictographs
+    r'\U0001FA00-\U0001FA6F'  # Chess Symbols
+    r'\U0001FA70-\U0001FAFF'  # Symbols and Pictographs Extended-A
+    r'\U00002700-\U000027BF'  # Dingbats
+    r'\U00002600-\U000026FF'  # Misc Symbols (including ❤️ with \uFE0F)
+    r'\U00002300-\U000023FF'  # Misc Technical
+    r'\U00002B50-\U00002B55'  # Stars, circles
+    r'\U0000200D'              # Zero Width Joiner
+    r'\U0000FE0E-\U0000FE0F'  # Variation Selectors
+    r'\U0001F1E0-\U0001F1FF'  # Regional indicators (flags)
+    r']+',
+    re.UNICODE
+)
+
+
+def contains_emoji(text: str) -> bool:
+    """Returns True if text contains any emoji characters."""
+    if not text:
+        return False
+    return bool(EMOJI_PATTERN.search(str(text)))
+
+
+def extract_emojis(text: str) -> str:
+    """Extracts only the emoji characters from text."""
+    if not text:
+        return ""
+    matches = EMOJI_PATTERN.findall(str(text))
+    return "".join(matches).strip()
+
+
+def strip_emojis(text: str) -> str:
+    """Removes all emojis from text and cleans up whitespace and attached punctuation."""
+    if not text:
+        return ""
+    cleaned = EMOJI_PATTERN.sub('', str(text))
+    cleaned = re.sub(r'[ \t]+', ' ', cleaned)
+    cleaned = re.sub(r'\s+([,!?\.])', r'\1', cleaned)
+    return cleaned.strip()
+
+
+def separate_emojis(text: str):
+    """
+    Separates a text into (clean_text, emojis).
+    The clean_text contains NO emojis.
+    The emojis string contains only extracted emoji characters.
+    """
+    if not text:
+        return "", ""
+    clean = strip_emojis(text)
+    emojis = extract_emojis(text)
+    return clean, emojis
+
 SYSTEM_INSTRUCTION = """You are the expert caption writer for Saba Bollywood YouTube Shorts.
 Transform the creator's rough video description into high-impact Shorts assets:
-1. main_caption (Setup + Hook)
-2. curiosity_caption (The Reveal)
-3. thumbnail_phrase (Short visual hook for the cover thumbnail frame)
+1. main (Setup + Hook - Clean text only)
+2. main_emoji (0-2 emojis or empty string)
+3. curiosity (The Reveal / Payoff - Clean text only)
+4. curiosity_emoji (0-2 emojis or empty string)
+5. thumbnail_phrase (Short visual hook for the cover thumbnail frame)
 
-CRITICAL SABA BOLLYWOOD WRITING SPECIFICATION:
-- Tone: Natural, engaging Bollywood entertainment/paparazzi news tone.
-- Curiosity: Create an irresistible open loop that makes viewers stay to watch the video.
-- Factuality (DO NOT INVENT FACTS): Stick 100% strictly to the factual story supplied by the creator. NEVER invent events, dialogue, actions, reactions, motives, emotions, private thoughts, unmentioned relationships, dates, locations, or fake details.
-- No AI Fluff: Avoid generic AI phrases, long explanations, excessive adjectives, SEO keywords, or clickbait nonsense that changes the meaning of the event.
+TARGET VOICE & PERSONA:
+- Write like a real Bollywood fan-page creator who watched the video, NOT an AI news writer or robotic entertainment journalist.
+- Think: "I watched this clip and I'm telling another Bollywood fan what made this moment interesting."
+- Not: "I am generating entertainment-news copy about this event."
+- Tone: emotional, human, simple, conversational, relatable, punchy, slightly dramatic when appropriate, curiosity-driven, natural, easy to understand instantly.
+
+SIMPLE ENGLISH (HIGHEST PRIORITY RULE):
+- Use everyday words.
+- Prefer: saw, noticed, stopped, smiled, looked back, walked over, waited, asked, waved, hugged, laughed, reacted, was about to leave, then this happened, but then, and that's when.
+- Avoid unnecessarily sophisticated, academic, or formal language.
+- FORBIDDEN GENERIC AI / NEWS PHRASES (DO NOT USE AS FILLER):
+  * captured attention
+  * heartwarming gesture
+  * unexpected turn of events
+  * left fans stunned / left everyone stunned
+  * unfolded
+  * garnered attention
+  * showcased
+  * demonstrated his affection / demonstrated her affection
+  * displayed his kindness / displayed her kindness
+  * proceeded to
+  * in a touching moment
+  * the internet was left
+  * netizens
+  * was seen
+  * made headlines
+  * social media went into a frenzy
+
+EMOTION THROUGH ACTION (SHOW, DON'T TELL):
+- Do not simply tell the audience: "It was a heartwarming moment" or "He displayed his kindness."
+- Show why it felt that way through physical actions. The action creates the emotion.
+- Instead of: "Salman Khan made a heartwarming gesture towards a fan."
+- Prefer: "Salman Khan was already heading out, but then he noticed someone waiting for him"
+
+NATURAL FAN-PAGE VOICE (AVOID "AI PERFECTNESS"):
+- Captions should sound like something a real creator would actually post.
+- Too robotic: "Salman Khan surprised everyone with a heartwarming interaction with a young fan."
+  Desired: "Salman Khan was already heading out, but then he noticed someone waiting for him"
+- Too robotic: "The actress displayed an unexpected reaction when paparazzi requested a pose."
+  Desired: "She was about to leave when the paparazzi asked her to pose… and her reaction"
+- Avoid overly polished or formal sentences:
+  "He could have just left, but he stopped" is much better than "Despite being ready to depart, he chose to pause and acknowledge the fan."
+
+TRUTHFULNESS & STRICT FACTUALITY (DO NOT INVENT FACTS):
+- Never invent: dialogue, thoughts, motives, relationships, locations, dates, feelings, backstory, reactions, or intentions.
+- Stick 100% strictly to the factual story supplied by the creator. Only use information supported by the supplied context.
+
+CAPTION ROLES & STRUCTURE:
+1. MAIN CAPTION (main):
+   - Contains: SETUP, CURIOSITY HOOK.
+   - Setup + curiosity/open loop.
+   - Makes the viewer want to watch. Makes them think: "What happened?"
+   - Must NOT explain the complete event.
+   - MUST include a comma ',' separating the setup and the hook.
+   - Write enough natural wording to comfortably occupy approximately two lines at normal font size.
+   - Examples of good style:
+     * "Salman Khan was walking down the street, but then..."
+     * "Salman Khan was casually walking, until something caught his eye..."
+   - Vary hook phrases naturally (e.g., ", but then...", ", until...", ", however...", ", meanwhile...", ", then suddenly...", ", and then...").
+
+2. CURIOSITY / REVEAL CAPTION (curiosity):
+   - The actual payoff.
+   - Explains what happened naturally. Feels like the satisfying second half of the Main.
+   - Must have enough substance to naturally occupy approximately two lines.
+   - Example:
+     * "He stopped before leaving to take a photo with the young fan"
+   - Do NOT add meaningless filler merely to increase length. Do NOT repeat the main caption.
+
+3. EMOJI FIELD SEPARATION (MANDATORY):
+   - main: Clean text only. Absolutely NO emojis inside main.
+   - main_emoji: 0-2 relevant emojis or "" (e.g. "👀" or "😳" or "🤔").
+   - curiosity: Clean text only. Absolutely NO emojis inside curiosity.
+   - curiosity_emoji: 0-2 relevant emojis or "" (e.g. "❤️" or "😂" or "🔥").
+   - Emojis must complement the sentence emotionally and naturally. Do not force emojis if they do not fit.
 
 CAPTION LAYOUT & VISUAL COMPOSITION PHILOSOPHY:
 - Think about the caption as visual composition, not character count.
@@ -42,7 +177,7 @@ CAPTION LAYOUT & VISUAL COMPOSITION PHILOSOPHY:
 - Visual Balance: LINE 1: substantial amount of text; LINE 2: substantial amount of text. The two lines should feel intentional, readable, and balanced.
 - One-Line Captions Are Undesirable: One line should be considered undesirable for normal generated captions because it leaves too much empty visual space and appears tiny or incomplete. Normal generated captions should not stay on one line.
 - Three Lines Exception Only: Three lines are allowed ONLY as an exception when the wording genuinely cannot be expressed naturally and comfortably within two lines. Do not artificially force three lines. Do not artificially force two lines with awkward wording.
-- Caption Length & No Rigid Character Count: Write enough natural text to comfortably occupy approximately two lines in the existing caption area at normal font size. Favor a visually balanced two-line composition over an exact character count. Do NOT target an arbitrary character-count range (a caption with 55 characters may be too short, 75 may be perfect, 90 may be appropriate depending on word lengths).
+- Caption Length & No Rigid Character Count: Write enough natural text to comfortably occupy approximately two lines in the existing caption area at normal font size. Favor a visually balanced two-line composition over an exact character count. Do NOT target an arbitrary character-count range.
 - No Forced Filler or Cramming: Do NOT use awkward filler words purely to increase length. Do NOT cram excessive words into the sentence just to force wrapping. Do NOT deliberately shorten the text just to guarantee two lines. Write naturally phrased, engaging text with enough substance to fill the available caption width across two lines.
 
 CAPITALIZATION RULES:
@@ -57,28 +192,7 @@ CAPITALIZATION RULES:
 - Keep ordinary words lowercase.
 - CRITICAL RATIONALE: The existing ShortsAI video renderer uses uppercase-first words as the visual red emphasis. Only names and genuinely important proper nouns should receive that red emphasis. If you use Title Case, every word becomes red.
 
-FORMAT & STRUCTURE RULES:
-1. MAIN CAPTION:
-   - Contains: SETUP, CURIOSITY HOOK.
-   - MUST include a comma ',' separating the setup and the hook.
-   - The setup establishes the scene. The hook opens the curiosity gap.
-   - Do NOT reveal the conclusion in the Main caption.
-   - Write enough natural wording to comfortably occupy approximately two lines at normal font size.
-   - Examples of good style:
-     * "Salman Khan was walking down the street, but then..."
-     * "Salman Khan was casually walking, until something caught his eye..."
-   - Vary hook phrases across generations (e.g., ", but then...", ", until...", ", however...", ", meanwhile...", ", then suddenly...", ", and then...").
-
-2. CURIOSITY / REVEAL CAPTION:
-   - Completes the open loop and explains the actual event.
-   - Must have enough substance to naturally occupy approximately two lines.
-   - If that particular sentence renders as only one line in the existing renderer, naturally expand it slightly with real context.
-   - Example:
-     * "He spotted his friend nearby and stopped to shake hands"
-   - Do NOT add meaningless filler merely to increase length.
-   - Do NOT repeat the main caption.
-
-3. THUMBNAIL / COVER-FRAME PHRASE (thumbnail_phrase):
+4. THUMBNAIL / COVER-FRAME PHRASE (thumbnail_phrase):
    - A short, high-impact visual hook displayed on the 1:1 Saba Bollywood cover thumbnail frame.
    - Target Length:
      * Ideally 2–6 words.
@@ -120,11 +234,18 @@ FORMAT & STRUCTURE RULES:
      * NO quotation marks in the returned value.
      * Exactly ONE phrase in the "thumbnail_phrase" field. Do not return multiple options, explanations, or rankings.
 
+FINAL HUMAN TEST:
+Before returning, internally ask:
+"Would a real Bollywood fan-page creator actually write this?"
+If it sounds like a newspaper, generic AI, or overly complicated English, or lacks emotion or curiosity, rewrite it to be simpler, punchier, and more conversational!
+
 OUTPUT FORMAT:
 Respond with ONLY valid JSON with this exact schema:
 {
-  "main_caption": "Setup goes here, hook phrase here...",
-  "curiosity_caption": "Resolution completing the action with enough substance here",
+  "main": "Setup goes here, hook phrase here...",
+  "main_emoji": "👀",
+  "curiosity": "Resolution completing the action with enough substance here",
+  "curiosity_emoji": "❤️",
   "thumbnail_phrase": "SHORT VISUAL HOOK 😳"
 }"""
 
@@ -158,19 +279,23 @@ def sanitize_thumbnail_phrase(phrase: str) -> str:
     return p
 
 def parse_gemini_response(response_text: str) -> dict:
-    """Parse and validate JSON response containing main_caption, curiosity_caption, and thumbnail_phrase."""
+    """Parse and validate JSON response containing main, main_emoji, curiosity, curiosity_emoji, and thumbnail_phrase."""
     clean_text = clean_json_text(response_text)
     try:
         data = json.loads(clean_text)
     except Exception as e:
         # Fallback regex extraction if raw JSON parsing fails
-        main_match = re.search(r'"main_caption"\s*:\s*"([^"]+)"', clean_text)
-        curiosity_match = re.search(r'"curiosity_caption"\s*:\s*"([^"]+)"', clean_text)
+        main_match = re.search(r'"(?:main|main_caption)"\s*:\s*"([^"]+)"', clean_text)
+        curiosity_match = re.search(r'"(?:curiosity|curiosity_caption)"\s*:\s*"([^"]+)"', clean_text)
         thumb_match = re.search(r'"thumbnail_phrase"\s*:\s*"([^"]+)"', clean_text)
+        main_emoji_match = re.search(r'"main_emoji"\s*:\s*"([^"]*)"', clean_text)
+        curiosity_emoji_match = re.search(r'"curiosity_emoji"\s*:\s*"([^"]*)"', clean_text)
         if main_match and curiosity_match:
             data = {
-                "main_caption": main_match.group(1),
-                "curiosity_caption": curiosity_match.group(1),
+                "main": main_match.group(1),
+                "curiosity": curiosity_match.group(1),
+                "main_emoji": main_emoji_match.group(1) if main_emoji_match else "",
+                "curiosity_emoji": curiosity_emoji_match.group(1) if curiosity_emoji_match else "",
                 "thumbnail_phrase": thumb_match.group(1) if thumb_match else ""
             }
         else:
@@ -179,17 +304,29 @@ def parse_gemini_response(response_text: str) -> dict:
     if not isinstance(data, dict):
         raise GeminiAPIError("Gemini response is not a valid JSON object.")
 
-    main_cap = data.get("main_caption", "").strip()
-    curiosity_cap = data.get("curiosity_caption", "").strip()
+    raw_main = str(data.get("main") if "main" in data else data.get("main_caption", "")).strip()
+    raw_curiosity = str(data.get("curiosity") if "curiosity" in data else data.get("curiosity_caption", "")).strip()
+    raw_main_emoji = str(data.get("main_emoji", "")).strip()
+    raw_curiosity_emoji = str(data.get("curiosity_emoji", "")).strip()
     raw_thumb = data.get("thumbnail_phrase", "")
     thumb_phrase = sanitize_thumbnail_phrase(str(raw_thumb)) if raw_thumb else ""
 
-    if not main_cap or not curiosity_cap:
+    clean_main, embedded_m_emojis = separate_emojis(raw_main)
+    clean_curiosity, embedded_c_emojis = separate_emojis(raw_curiosity)
+
+    if not clean_main or not clean_curiosity:
         raise GeminiAPIError("Gemini response is missing required caption fields.")
 
+    final_main_emoji = extract_emojis(raw_main_emoji) or embedded_m_emojis
+    final_curiosity_emoji = extract_emojis(raw_curiosity_emoji) or embedded_c_emojis
+
     result = {
-        "main_caption": main_cap,
-        "curiosity_caption": curiosity_cap,
+        "main": clean_main,
+        "main_emoji": final_main_emoji,
+        "curiosity": clean_curiosity,
+        "curiosity_emoji": final_curiosity_emoji,
+        "main_caption": clean_main,
+        "curiosity_caption": clean_curiosity,
         "thumbnail_phrase": thumb_phrase
     }
 
