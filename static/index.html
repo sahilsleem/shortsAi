@@ -194,17 +194,33 @@
             border: 1px solid #cbd5e1;
             border-radius: 8px;
             font-size: 13px;
-            color: var(--text-main);
+            color: #0f172a;
             background: #f8fafc;
-            transition: all 0.2s ease;
+            transition: all 0.15s ease;
+            box-sizing: border-box;
+            font-family: inherit;
         }
         input[type="text"]:focus, textarea:focus, select:focus {
             outline: none;
             border-color: var(--accent);
             background: #ffffff;
-            box-shadow: var(--shadow-focus);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
         }
-        textarea { resize: vertical; min-height: 52px; }
+        textarea {
+            resize: vertical;
+            min-height: 48px;
+            line-height: 1.4;
+        }
+        select {
+            height: 36px;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 28px;
+            cursor: pointer;
+        }
 
         .toggle-group {
             display: flex;
@@ -260,55 +276,115 @@
         }
         .btn-secondary:hover:not(:disabled) { background: #e2e8f0; }
 
-        /* Tool Drawers */
-        .tool-drawers {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin: 10px 0;
+        /* Quick Editor Toolbar Controls */
+        .editor-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            height: 40px;
+            padding: 0 10px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: #1e293b;
+            color: #f8fafc;
+            cursor: pointer;
+            transition: all 0.12s ease;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
         }
-        .drawer {
+        .editor-btn:active {
+            transform: scale(0.97);
+            background: #334155;
+        }
+        .editor-btn-primary {
+            background: #4f46e5;
+            border-color: #4f46e5;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 13px;
+            box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
+        }
+        .editor-btn-primary:active {
+            background: #4338ca;
+            border-color: #4338ca;
+        }
+        .editor-btn-danger {
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #f87171;
+        }
+        .editor-btn-danger:active {
+            background: rgba(239, 68, 68, 0.25);
+        }
+
+        /* Polished Creator Tool Sections (Visible by Default) */
+        .tool-sections {
             background: #ffffff;
             border: 1px solid var(--border-color);
-            border-radius: 12px;
-            overflow: hidden;
+            border-radius: 14px;
+            padding: 12px 14px;
+            margin: 10px 0;
             box-shadow: var(--shadow-sm);
-            transition: border-color 0.2s ease;
         }
-        .drawer-header {
-            width: 100%;
+        .tool-section {
+            padding: 12px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .tool-section:first-child {
+            padding-top: 2px;
+        }
+        .tool-section:last-child {
+            border-bottom: none;
+            padding-bottom: 2px;
+        }
+        .section-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 11px 14px;
-            background: #ffffff;
-            border: none;
-            font-size: 13px;
+            margin-bottom: 8px;
+        }
+        .section-title {
+            font-size: 11px;
             font-weight: 700;
-            color: var(--text-main);
-            cursor: pointer;
-            text-align: left;
-            -webkit-tap-highlight-color: transparent;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
         }
-        .drawer-header:hover {
-            background: #f8fafc;
+        .field-label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 4px;
         }
-        .drawer-arrow {
-            font-size: 15px;
-            font-weight: bold;
-            color: var(--text-muted);
-            transition: transform 0.2s ease;
-            display: inline-block;
+        .field-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #1e293b;
         }
-        .drawer.open .drawer-arrow {
-            transform: rotate(90deg);
-        }
-        .drawer-body {
-            display: none;
-            padding: 2px 14px 14px;
-        }
-        .drawer.open .drawer-body {
+        .sub-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #64748b;
+            margin-bottom: 3px;
             display: block;
+        }
+        .caption-block {
+            margin-bottom: 6px;
+        }
+        .caption-sub-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 6px;
+        }
+        .caption-divider {
+            height: 1px;
+            background: #f1f5f9;
+            margin: 10px 0;
         }
 
         #result-section { text-align: center; }
@@ -435,35 +511,61 @@
                     </div>
 
                     <!-- Quick Editing Controls -->
-                    <div style="display: flex; gap: 6px; margin-top: 6px;">
-                        <button type="button" id="btn-frame-prev" class="btn btn-secondary" style="flex: 1; height: 38px; padding: 0 6px; font-size: 12px; font-weight: 600; touch-action: none; user-select: none; -webkit-user-select: none;">◀ Frame</button>
-                        <button type="button" id="btn-play-selection" class="btn" style="flex: 2; height: 38px; padding: 0 10px; font-size: 13px; font-weight: 700; background: #4f46e5; color: #fff;">Play Selection</button>
-                        <button type="button" id="btn-frame-next" class="btn btn-secondary" style="flex: 1; height: 38px; padding: 0 6px; font-size: 12px; font-weight: 600; touch-action: none; user-select: none; -webkit-user-select: none;">Frame ▶</button>
+                    <div style="display: flex; gap: 6px; margin-top: 8px;">
+                        <button type="button" id="btn-frame-prev" class="editor-btn" style="flex: 1;">◀ Frame</button>
+                        <button type="button" id="btn-play-selection" class="editor-btn editor-btn-primary" style="flex: 2;">Play Selection</button>
+                        <button type="button" id="btn-frame-next" class="editor-btn" style="flex: 1;">Frame ▶</button>
                     </div>
 
-                    <div style="display: flex; gap: 8px; margin-top: 6px;">
-                        <button type="button" id="btn-split" class="btn btn-secondary" style="flex: 1; height: 36px; padding: 0; font-size: 12px; font-weight: 600;">✂ Split</button>
-                        <button type="button" id="btn-delete-segment" class="btn" style="flex: 1; height: 36px; padding: 0; font-size: 12px; font-weight: 600; background: #fef2f2; color: #ef4444; border: 1px solid #fecaca; box-shadow: none;">🗑 Delete</button>
+                    <div style="display: flex; gap: 6px; margin-top: 6px;">
+                        <button type="button" id="btn-split" class="editor-btn" style="flex: 1; height: 38px;">✂ Split</button>
+                        <button type="button" id="btn-delete-segment" class="editor-btn editor-btn-danger" style="flex: 1; height: 38px;">🗑 Delete</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Secondary Tool Drawers -->
-            <div class="tool-drawers">
-                <!-- Captions Drawer (Open by default) -->
-                <div class="drawer open" id="drawer-captions">
-                    <button type="button" class="drawer-header" onclick="toggleDrawer('drawer-captions')">
-                        <span>Captions</span>
-                        <span class="drawer-arrow">›</span>
-                    </button>
-                    <div class="drawer-body">
-                        <div class="form-group" style="margin-bottom: 8px;">
-                            <label style="font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 4px;">Main Caption</label>
-                            <textarea id="caption-main" placeholder="E.g. Salman was doing it wrong, but then..." style="min-height: 52px; font-size: 13px; padding: 8px 10px;"></textarea>
-                            <div style="display: flex; gap: 8px; margin-top: 6px;">
+            <!-- Polished Creator Tool Sections (Visible by Default) -->
+            <div class="tool-sections">
+                <!-- Captions Section -->
+                <div class="tool-section" id="drawer-captions">
+                    <div class="section-header">
+                        <span class="section-title">Captions</span>
+                    </div>
+
+                    <div class="caption-block">
+                        <div class="field-label-row">
+                            <span class="field-label">Main Caption</span>
+                        </div>
+                        <textarea id="caption-main" placeholder="E.g. Salman was doing it wrong, but then..."></textarea>
+                        <div class="caption-sub-row">
+                            <div style="flex: 2;">
+                                <span class="sub-label">Font</span>
+                                <select id="font-main">
+                                    <option value="Alike" selected>Alike</option>
+                                    <option value="Calistoga">Calistoga</option>
+                                    <option value="Caslon OS">Caslon OS</option>
+                                    <option value="Fira Mono">Fira Mono</option>
+                                    <option value="Source Sans Pro">Source Sans Pro</option>
+                                </select>
+                            </div>
+                            <div style="flex: 1;">
+                                <span class="sub-label">Emoji <span class="optional-tag">Opt</span></span>
+                                <input type="text" id="caption-emoji-main" placeholder="🤔" style="height: 36px; text-align: center; font-size: 15px;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="curiosity-fields">
+                        <div class="caption-divider"></div>
+                        <div class="caption-block">
+                            <div class="field-label-row">
+                                <span class="field-label">Curiosity Caption</span>
+                            </div>
+                            <textarea id="caption-curiosity" placeholder="E.g. Arpita stepped in!"></textarea>
+                            <div class="caption-sub-row">
                                 <div style="flex: 2;">
-                                    <label style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 2px;">Font</label>
-                                    <select id="font-main">
+                                    <span class="sub-label">Font</span>
+                                    <select id="font-curiosity">
                                         <option value="Alike" selected>Alike</option>
                                         <option value="Calistoga">Calistoga</option>
                                         <option value="Caslon OS">Caslon OS</option>
@@ -472,128 +574,101 @@
                                     </select>
                                 </div>
                                 <div style="flex: 1;">
-                                    <label style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 2px;">Emoji <span class="optional-tag">Opt</span></label>
-                                    <input type="text" id="caption-emoji-main" placeholder="🤔" style="width: 100%; padding: 6px 8px; font-size: 13px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc;">
-                                </div>
-                            </div>
-                        </div>
-
-                        <div id="curiosity-fields">
-                            <div style="height: 1px; background: var(--border-color); margin: 12px 0;"></div>
-                            <div class="form-group" style="margin-bottom: 4px;">
-                                <label style="font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 4px;">Curiosity Caption</label>
-                                <textarea id="caption-curiosity" placeholder="E.g. Arpita stepped in!" style="min-height: 52px; font-size: 13px; padding: 8px 10px;"></textarea>
-                                <div style="display: flex; gap: 8px; margin-top: 6px;">
-                                    <div style="flex: 2;">
-                                        <label style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 2px;">Font</label>
-                                        <select id="font-curiosity">
-                                            <option value="Alike" selected>Alike</option>
-                                            <option value="Calistoga">Calistoga</option>
-                                            <option value="Caslon OS">Caslon OS</option>
-                                            <option value="Fira Mono">Fira Mono</option>
-                                            <option value="Source Sans Pro">Source Sans Pro</option>
-                                        </select>
-                                    </div>
-                                    <div style="flex: 1;">
-                                        <label style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 2px;">Emoji <span class="optional-tag">Opt</span></label>
-                                        <input type="text" id="caption-emoji-curiosity" placeholder="🔥" style="width: 100%; padding: 6px 8px; font-size: 13px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc;">
-                                    </div>
+                                    <span class="sub-label">Emoji <span class="optional-tag">Opt</span></span>
+                                    <input type="text" id="caption-emoji-curiosity" placeholder="🔥" style="height: 36px; text-align: center; font-size: 15px;">
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- AI Writer Drawer (Collapsed by default) -->
-                <div class="drawer" id="drawer-ai-writer">
-                    <button type="button" class="drawer-header" onclick="toggleDrawer('drawer-ai-writer')">
-                        <span>AI Writer</span>
-                        <span class="drawer-arrow">›</span>
-                    </button>
-                    <div class="drawer-body">
-                        <div class="form-group" style="margin-bottom: 8px;">
-                            <label style="font-size: 12px; font-weight: 600; color: #4338ca; margin-bottom: 4px;">What's happening in this video?</label>
-                            <textarea id="gemini-context" placeholder="E.g. Salman Khan was walking down the street, then he spotted his friend..." style="min-height: 56px; font-size: 13px; padding: 8px 10px;"></textarea>
+                <!-- AI Writer Section -->
+                <div class="tool-section" id="drawer-ai-writer">
+                    <div class="section-header">
+                        <span class="section-title">AI Writer</span>
+                    </div>
+                    <div class="field-label-row">
+                        <span class="field-label">Context</span>
+                    </div>
+                    <textarea id="gemini-context" placeholder="Tell AI what this Short is about..."></textarea>
+
+                    <button type="button" class="btn btn-primary" id="btn-gemini-generate" style="margin-top: 8px; height: 38px; font-size: 13px;">✨ Generate Captions</button>
+                    <div id="gemini-error" style="display: none; color: #dc2626; font-size: 12px; font-weight: 500; margin-top: 6px; line-height: 1.4;"></div>
+
+                    <div id="gemini-result-card" style="display: none; margin-top: 10px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-size: 11px; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.5px;">Generated Captions</div>
+                            <div id="gemini-provider-badge" style="font-size: 11px; font-weight: 600; color: #94a3b8;"></div>
                         </div>
 
-                        <button type="button" class="btn" id="btn-gemini-generate" style="background: #4f46e5; padding: 10px; font-size: 13px; border-radius: 8px;">✨ Generate</button>
-                        <div id="gemini-error" style="display: none; color: #dc2626; font-size: 12px; font-weight: 500; margin-top: 8px; line-height: 1.4;"></div>
-                        <div id="gemini-result-card" style="display: none; margin-top: 12px; padding: 12px; background: #f8fafc; border: 1px solid #e0e7ff; border-radius: 10px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Generated Captions</div>
-                                <div id="gemini-provider-badge" style="font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: none;"></div>
-                            </div>
+                        <div id="gemini-options-container" style="display: none; margin-bottom: 8px;">
+                            <div style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 4px;">Select Option (1–10):</div>
+                            <div id="gemini-options-pills" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch;"></div>
+                        </div>
 
-                            <div id="gemini-options-container" style="display: none; margin-bottom: 10px;">
-                                <div style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 4px;">Select Option (1–10):</div>
-                                <div id="gemini-options-pills" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch;"></div>
+                        <div style="margin-bottom: 6px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                <span style="font-size: 11px; font-weight: 700; color: #4f46e5; text-transform: uppercase;">Main Caption</span>
+                                <span id="gemini-preview-main-emoji" style="font-size: 15px;"></span>
                             </div>
+                            <div id="gemini-preview-main" style="font-size: 13px; font-weight: 600; color: #0f172a; line-height: 1.4;"></div>
+                        </div>
 
-                            <div style="margin-bottom: 8px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                                    <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase;">Main Caption</div>
-                                    <span id="gemini-preview-main-emoji" style="font-size: 15px;"></span>
-                                </div>
-                                <div id="gemini-preview-main" style="font-size: 13px; font-weight: 600; color: var(--text-main); line-height: 1.4;"></div>
+                        <div style="margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                <span style="font-size: 11px; font-weight: 700; color: #4f46e5; text-transform: uppercase;">Curiosity Caption</span>
+                                <span id="gemini-preview-curiosity-emoji" style="font-size: 15px;"></span>
                             </div>
-                            <div style="margin-bottom: 10px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                                    <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase;">Curiosity Caption</div>
-                                    <span id="gemini-preview-curiosity-emoji" style="font-size: 15px;"></span>
-                                </div>
-                                <div id="gemini-preview-curiosity" style="font-size: 13px; font-weight: 600; color: var(--text-main); line-height: 1.4;"></div>
-                            </div>
-                            <div style="display: flex; gap: 8px;">
-                                <button type="button" class="toggle-btn" id="btn-gemini-retry" style="flex: 1; padding: 8px; background: #e2e8f0; color: var(--text-main); font-weight: 600; font-size: 13px; border-radius: 8px;">↻ Retry</button>
-                                <button type="button" class="toggle-btn" id="btn-gemini-use" style="flex: 1; padding: 8px; background: #0d9488; color: #ffffff; font-weight: 600; font-size: 13px; border-radius: 8px;">✓ Use</button>
-                            </div>
+                            <div id="gemini-preview-curiosity" style="font-size: 13px; font-weight: 600; color: #0f172a; line-height: 1.4;"></div>
+                        </div>
+
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" class="btn btn-secondary" id="btn-gemini-retry" style="flex: 1; height: 36px; padding: 0; font-size: 12px; font-weight: 600;">↻ Retry</button>
+                            <button type="button" class="btn btn-primary" id="btn-gemini-use" style="flex: 1; height: 36px; padding: 0; font-size: 12px; font-weight: 600; background: #0d9488;">✓ Use</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Enhance Drawer (Collapsed by default) -->
-                <div class="drawer" id="drawer-enhance">
-                    <button type="button" class="drawer-header" onclick="toggleDrawer('drawer-enhance')">
-                        <span>Enhance</span>
-                        <span class="drawer-arrow">›</span>
-                    </button>
-                    <div class="drawer-body">
-                        <label style="font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; display: block;">Video & Audio Enhancement</label>
-                        <div class="toggle-group" id="enhance-toggle">
+                <!-- Enhancement Section -->
+                <div class="tool-section" id="drawer-enhance">
+                    <div class="section-header">
+                        <span class="section-title">Enhancement</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span class="field-label" style="margin-bottom: 0;">Enhance Video & Audio</span>
+                        <div class="toggle-group" id="enhance-toggle" style="width: 140px;">
                             <button type="button" class="toggle-btn active" data-val="off">OFF</button>
                             <button type="button" class="toggle-btn" data-val="on">ON</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Audio Drawer (Collapsed by default) -->
-                <div class="drawer" id="drawer-audio">
-                    <button type="button" class="drawer-header" onclick="toggleDrawer('drawer-audio')">
-                        <span>Audio</span>
-                        <span class="drawer-arrow">›</span>
-                    </button>
-                    <div class="drawer-body">
-                        <div id="audio-disabled-note" style="font-size: 12px; color: #94a3b8; padding: 4px 0;">Enhance is OFF. Audio modes apply when Enhance is turned ON.</div>
-                        <div id="audio-mode-group" style="display: none;">
-                            <label style="font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; display: block;">Audio Mix Mode</label>
-                            <div class="toggle-group" id="audio-mode-toggle">
-                                <button type="button" class="toggle-btn" data-val="original">Original Mix</button>
-                                <button type="button" class="toggle-btn active" data-val="enhanced">Enhanced Mix</button>
-                                <button type="button" class="toggle-btn" data-val="voice_focus">Voice Focus</button>
-                            </div>
+                <!-- Audio Section -->
+                <div class="tool-section" id="drawer-audio">
+                    <div class="section-header">
+                        <span class="section-title">Audio</span>
+                    </div>
+                    <div id="audio-disabled-note" style="font-size: 12px; color: #94a3b8; padding: 2px 0;">Enhance is OFF. Audio modes apply when Enhance is turned ON.</div>
+                    <div id="audio-mode-group" style="display: none;">
+                        <div class="field-label-row">
+                            <span class="field-label">Audio Mix Mode</span>
+                        </div>
+                        <div class="toggle-group" id="audio-mode-toggle">
+                            <button type="button" class="toggle-btn" data-val="original">Original</button>
+                            <button type="button" class="toggle-btn active" data-val="enhanced">Enhanced</button>
+                            <button type="button" class="toggle-btn" data-val="voice_focus">Voice Focus</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Branding Drawer (Collapsed by default) -->
-                <div class="drawer" id="drawer-branding">
-                    <button type="button" class="drawer-header" onclick="toggleDrawer('drawer-branding')">
-                        <span>Branding</span>
-                        <span class="drawer-arrow">›</span>
-                    </button>
-                    <div class="drawer-body">
-                        <label style="font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; display: block;">Watermark Branding</label>
-                        <div class="toggle-group" id="branding-toggle">
+                <!-- Branding Section -->
+                <div class="tool-section" id="drawer-branding">
+                    <div class="section-header">
+                        <span class="section-title">Branding</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span class="field-label" style="margin-bottom: 0;">Saba Bollywood watermark</span>
+                        <div class="toggle-group" id="branding-toggle" style="width: 140px;">
                             <button type="button" class="toggle-btn active" data-val="off">OFF</button>
                             <button type="button" class="toggle-btn" data-val="on">ON</button>
                         </div>

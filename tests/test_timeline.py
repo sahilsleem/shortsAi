@@ -593,17 +593,15 @@ def test_mobile_creator_redesign_structure():
     assert 'id="btn-split"' in html
     assert 'id="btn-delete-segment"' in html
 
-    # 3. Compact Tool Drawers
+    # 3. Polished Creator Tool Sections (Visible by Default)
+    assert 'class="tool-sections"' in html
     assert 'id="drawer-captions"' in html
     assert 'id="drawer-ai-writer"' in html
     assert 'id="drawer-enhance"' in html
     assert 'id="drawer-audio"' in html
     assert 'id="drawer-branding"' in html
+    assert 'class="tool-section"' in html
     assert 'toggleDrawer' in html
-
-    # 4. Captions drawer open by default, others closed by default
-    assert 'class="drawer open" id="drawer-captions"' in html
-    assert 'class="drawer" id="drawer-ai-writer"' in html
 
     # 5. Prominent Render CTA and result section
     assert 'id="btn-generate"' in html
