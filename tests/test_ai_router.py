@@ -50,6 +50,8 @@ from src.ai_router import (
     PROVIDER_REGISTRY,
     get_configured_provider_order,
     DEFAULT_PROVIDER_ORDER,
+    sanitize_log_text,
+    format_structural_summary,
 )
 
 
@@ -833,3 +835,101 @@ def test_reasoning_fallback_never_exposes_internal_thoughts(monkeypatch):
     assert "reasoning" not in result
     assert "reasoning_content" not in result
     assert "thought" not in result
+
+
+def test_sanitize_log_text_masks_keys_and_redacts(monkeypatch):
+    """Test 32: sanitize_log_text redacts configured env keys and generic key patterns, and truncates."""
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_real_secret_key_abcdef123456")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-real_secret_token_987654")
+
+    raw_text = "Error calling with gsk_real_secret_key_abcdef123456 and Bearer sk-or-real_secret_token_987654"
+    sanitized = sanitize_log_text(raw_text)
+
+    assert "gsk_real_secret_key" not in sanitized
+    assert "sk-or-real_secret" not in sanitized
+    assert "[REDACTED_GROQ_API_KEY]" in sanitized or "[REDACTED_GROQ_KEY]" in sanitized
+    assert "[REDACTED_OPENROUTER_API_KEY]" in sanitized or "[REDACTED_TOKEN]" in sanitized
+
+    long_text = "x" * 600
+    assert len(sanitize_log_text(long_text, max_len=200)) <= 203
+
+
+def test_format_structural_summary_outputs_sanitized_keys_and_counts():
+    """Test 33: format_structural_summary outputs safe structural metadata without dumping contents."""
+    data = {
+        "id": "gen-1234",
+        "choices": [{
+            "finish_reason": "stop",
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "reasoning_content": "private thoughts should not leak in summary",
+            }
+        }],
+        "usage": {"total_tokens": 150}
+    }
+    summary = format_structural_summary(data, status_code=200)
+
+    assert "HTTP 200" in summary
+    assert "top_keys=['choices', 'id', 'usage']" in summary
+    assert "choices_count=1" in summary
+    assert "finish_reason='stop'" in summary
+    assert "content_len=0" in summary
+    assert "has_reasoning=True" in summary
+    assert "private thoughts" not in summary
+
+
+def test_groq_http_error_logs_status_and_body_snippet(monkeypatch, capsys):
+    """Test 34: When Groq returns an HTTP error (e.g. 400 Bad Request), logs status code and sanitized body snippet."""
+    import urllib.error
+
+    def mock_urlopen(req, timeout=None):
+        fp = io.BytesIO(b'{"error":{"message":"Failed to parse body: unrecognized field","type":"invalid_request_error"}}')
+        raise urllib.error.HTTPError(req.full_url, 400, "Bad Request", {}, fp)
+
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    with pytest.raises(AllProvidersFailedError):
+        generate_content_with_fallback("Salman at airport", provider_order=["groq"])
+
+    captured = capsys.readouterr()
+    assert "[Groq] HTTP 400 (AIProviderError):" in captured.out
+    assert "Failed to parse body" in captured.out
+    assert "Provider Error" in captured.out
+
+
+def test_openrouter_malformed_empty_content_logs_structural_summary(monkeypatch, capsys):
+    """Test 35: When OpenRouter returns empty message content, logs structural summary to console."""
+    resp_bytes = json.dumps({
+        "id": "gen-test-555",
+        "choices": [{
+            "finish_reason": "stop",
+            "message": {
+                "role": "assistant",
+                "content": ""
+            }
+        }]
+    }).encode("utf-8")
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: MockHTTPResponse(resp_bytes))
+
+    with pytest.raises(AllProvidersFailedError):
+        generate_content_with_fallback("Salman at airport", provider_order=["openrouter"])
+
+    captured = capsys.readouterr()
+    assert "[Openrouter] Empty message content. Response structure: HTTP 200" in captured.out
+    assert "choices_count=1" in captured.out
+    assert "content_len=0" in captured.out
+    assert "finish_reason='stop'" in captured.out

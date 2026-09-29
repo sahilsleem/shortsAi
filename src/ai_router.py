@@ -91,6 +91,92 @@ class AllProvidersFailedError(Exception):
 
 
 # ---------------------------------------------------------------------------
+# Diagnostic Logging Helpers
+# ---------------------------------------------------------------------------
+
+def sanitize_log_text(text: Any, max_len: int = 500) -> str:
+    """
+    Sanitizes arbitrary text for safe console logging:
+    - Never prints API keys or Bearer tokens.
+    - Redacts any configured environment API keys.
+    - Truncates to max_len characters.
+    - Condenses whitespace to keep logs clean and single-line.
+    """
+    if not text:
+        return ""
+    s = str(text)
+    # Redact configured API keys in environment
+    for key_env in ("GEMINI_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "OPENROUTER_API_KEY"):
+        val = os.environ.get(key_env, "").strip().strip("\"'")
+        if val and len(val) >= 4 and val in s:
+            s = s.replace(val, f"[REDACTED_{key_env}]")
+
+    # Generic patterns
+    s = re.sub(r'gsk_[A-Za-z0-9_\-]{6,}', '[REDACTED_GROQ_KEY]', s)
+    s = re.sub(r'sk-or-[A-Za-z0-9_\-]{6,}', '[REDACTED_OPENROUTER_KEY]', s)
+    s = re.sub(r'AIza[A-Za-z0-9_\-]{6,}', '[REDACTED_GEMINI_KEY]', s)
+    s = re.sub(r'csk-[A-Za-z0-9_\-]{6,}', '[REDACTED_CEREBRAS_KEY]', s)
+    s = re.sub(r'(Bearer\s+)[A-Za-z0-9_\-\.]{8,}', r'\1[REDACTED_TOKEN]', s)
+    s = re.sub(r'(SECRET_[A-Za-z0-9_]+)', '[REDACTED_SECRET]', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    if len(s) > max_len:
+        return s[:max_len] + "..."
+    return s
+
+
+def format_structural_summary(data: Any, status_code: int = 200) -> str:
+    """
+    Constructs a safe structural summary of an API response without leaking
+    sensitive prompts, user context, or private internal reasoning text.
+    """
+    if not isinstance(data, dict):
+        return f"HTTP {status_code} | data_type={type(data).__name__}"
+
+    top_keys = sorted(list(data.keys()))
+    has_error = "error" in data
+    error_summary = ""
+    if has_error:
+        err = data.get("error")
+        if isinstance(err, dict):
+            err_code = err.get("code")
+            err_type = err.get("type")
+            err_msg = sanitize_log_text(err.get("message", ""), max_len=120)
+            error_summary = f" (code={err_code}, type={err_type}, msg='{err_msg}')"
+        else:
+            error_summary = f" ({sanitize_log_text(str(err), max_len=120)})"
+
+    choices = data.get("choices")
+    choices_count = len(choices) if isinstance(choices, list) else 0
+
+    first_choice_summary = []
+    if choices_count > 0 and isinstance(choices[0], dict):
+        fc = choices[0]
+        finish_reason = fc.get("finish_reason")
+        first_choice_summary.append(f"finish_reason={finish_reason!r}")
+        msg = fc.get("message")
+        if isinstance(msg, dict):
+            msg_keys = sorted(list(msg.keys()))
+            first_choice_summary.append(f"message_keys={msg_keys}")
+            content = msg.get("content")
+            content_type = type(content).__name__
+            content_len = len(content) if hasattr(content, "__len__") else 0
+            first_choice_summary.append(f"content_type={content_type}")
+            first_choice_summary.append(f"content_len={content_len}")
+            has_refusal = bool(msg.get("refusal"))
+            first_choice_summary.append(f"has_refusal={has_refusal}")
+            has_reasoning = bool(msg.get("reasoning_content") or msg.get("reasoning") or msg.get("thought"))
+            first_choice_summary.append(f"has_reasoning={has_reasoning}")
+        else:
+            first_choice_summary.append(f"message_type={type(msg).__name__}")
+    elif choices is not None and not isinstance(choices, list):
+        first_choice_summary.append(f"choices_type={type(choices).__name__}")
+
+    fc_str = " | " + " | ".join(first_choice_summary) if first_choice_summary else ""
+    return f"HTTP {status_code} | top_keys={top_keys} | choices_count={choices_count} | has_error={has_error}{error_summary}{fc_str}"
+
+
+
+# ---------------------------------------------------------------------------
 # Master Saba Bollywood Publishing Prompt
 # ---------------------------------------------------------------------------
 
@@ -356,8 +442,10 @@ class GeminiProvider(BaseAIProvider):
                 resp_data = json.loads(resp_body)
         except urllib.error.HTTPError as e:
             err_msg = ""
+            raw_snippet = ""
             try:
                 raw_err = e.read().decode("utf-8", errors="replace")
+                raw_snippet = sanitize_log_text(raw_err, max_len=500)
                 try:
                     err_data = json.loads(raw_err)
                     if isinstance(err_data, dict):
@@ -371,6 +459,21 @@ class GeminiProvider(BaseAIProvider):
                     err_msg = clean_err[:120] if clean_err else str(e.reason)
             except Exception:
                 err_msg = str(e.reason)
+                raw_snippet = sanitize_log_text(str(e.reason), max_len=500)
+
+            # Classify error
+            if e.code in (400, 401, 403, 404) and ("API_KEY" in err_msg or "key" in err_msg.lower()):
+                error_class = "AIAuthError"
+            elif e.code == 429 or "RESOURCE_EXHAUSTED" in err_msg or "quota" in err_msg.lower():
+                error_class = "AIQuotaError"
+            elif e.code == 408:
+                error_class = "AITimeoutError"
+            elif 500 <= e.code < 600:
+                error_class = "AITransientError"
+            else:
+                error_class = "AIProviderError"
+
+            print(f"[Gemini] HTTP {e.code} ({error_class}): {raw_snippet}")
 
             if e.code in (400, 401, 403, 404):
                 if e.code in (400, 403) and ("API_KEY" in err_msg or "key" in err_msg.lower()):
@@ -389,13 +492,22 @@ class GeminiProvider(BaseAIProvider):
             raise AIProviderError(f"Gemini HTTP error ({e.code}): {err_msg}", provider=self.name, status_code=e.code)
 
         except urllib.error.URLError as e:
+            exc_type = type(e).__name__
+            exc_msg = sanitize_log_text(str(e.reason))
+            print(f"[Gemini] Network Exception ({exc_type}): {exc_msg}")
             if isinstance(e.reason, socket.timeout) or "timed out" in str(e.reason).lower():
                 raise AITimeoutError(f"Gemini network timeout: {e.reason}", provider=self.name)
             raise AINetworkError(f"Gemini network error: {e.reason}", provider=self.name)
-        except (TimeoutError, socket.timeout):
+        except (TimeoutError, socket.timeout) as e:
+            print(f"[Gemini] Timeout Exception ({type(e).__name__}): {sanitize_log_text(str(e))}")
             raise AITimeoutError("Gemini request timed out", provider=self.name)
+        except (AIProviderError, ValueError):
+            raise
         except Exception as e:
-            raise AIProviderError(f"Gemini communication error: {str(e)}", provider=self.name)
+            exc_type = type(e).__name__
+            exc_msg = sanitize_log_text(str(e))
+            print(f"[Gemini] Unexpected Exception ({exc_type}): {exc_msg}")
+            raise AIProviderError(f"Gemini communication error ({exc_type}): {exc_msg}", provider=self.name)
 
         candidates = resp_data.get("candidates", [])
         if not candidates:
@@ -480,8 +592,10 @@ class OpenAICompatibleProvider(BaseAIProvider):
                     return json.loads(resp_body)
             except urllib.error.HTTPError as e:
                 err_msg = ""
+                raw_snippet = ""
                 try:
                     raw_err = e.read().decode("utf-8", errors="replace")
+                    raw_snippet = sanitize_log_text(raw_err, max_len=500)
                     try:
                         err_data = json.loads(raw_err)
                         if isinstance(err_data, dict):
@@ -495,6 +609,21 @@ class OpenAICompatibleProvider(BaseAIProvider):
                         err_msg = clean_err[:120] if clean_err else str(e.reason)
                 except Exception:
                     err_msg = str(e.reason)
+                    raw_snippet = sanitize_log_text(str(e.reason), max_len=500)
+
+                # Classify error
+                if e.code in (401, 403):
+                    error_class = "AIAuthError"
+                elif e.code == 429 or "rate_limit" in err_msg.lower() or "quota" in err_msg.lower():
+                    error_class = "AIQuotaError"
+                elif e.code == 408:
+                    error_class = "AITimeoutError"
+                elif 500 <= e.code < 600:
+                    error_class = "AITransientError"
+                else:
+                    error_class = "AIProviderError"
+
+                print(f"[{self.name.capitalize()}] HTTP {e.code} ({error_class}): {raw_snippet}")
 
                 # If 400 Bad Request indicates json_object response_format is unsupported, signal to retry without it
                 if include_json_format and e.code == 400 and any(kw in err_msg.lower() for kw in ("response_format", "json_object", "schema", "parameter")):
@@ -521,15 +650,22 @@ class OpenAICompatibleProvider(BaseAIProvider):
                 raise AIProviderError(f"{self.name} HTTP error ({e.code}): {err_msg}", provider=self.name, status_code=e.code)
 
             except urllib.error.URLError as e:
+                exc_type = type(e).__name__
+                exc_msg = sanitize_log_text(str(e.reason))
+                print(f"[{self.name.capitalize()}] Network Exception ({exc_type}): {exc_msg}")
                 if isinstance(e.reason, socket.timeout) or "timed out" in str(e.reason).lower():
                     raise AITimeoutError(f"{self.name} network timeout: {e.reason}", provider=self.name)
                 raise AINetworkError(f"{self.name} network error: {e.reason}", provider=self.name)
-            except (TimeoutError, socket.timeout):
+            except (TimeoutError, socket.timeout) as e:
+                print(f"[{self.name.capitalize()}] Timeout Exception ({type(e).__name__}): {sanitize_log_text(str(e))}")
                 raise AITimeoutError(f"{self.name} request timed out", provider=self.name)
             except (AIProviderError, ValueError):
                 raise
             except Exception as e:
-                raise AIProviderError(f"{self.name} communication error: {str(e)}", provider=self.name)
+                exc_type = type(e).__name__
+                exc_msg = sanitize_log_text(str(e))
+                print(f"[{self.name.capitalize()}] Execution Exception ({exc_type}): {exc_msg}")
+                raise AIProviderError(f"{self.name} communication error ({exc_type}): {exc_msg}", provider=self.name)
 
         def _extract_choice_data(data: dict) -> Tuple[Optional[str], Optional[str], Optional[str]]:
             """Extracts (content, refusal, finish_reason) from response dictionary."""
@@ -538,6 +674,7 @@ class OpenAICompatibleProvider(BaseAIProvider):
                 err = data["error"]
                 err_msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
                 code = err.get("code") if isinstance(err, dict) else None
+                print(f"[{self.name.capitalize()}] Top-level API error object present. Structure: {format_structural_summary(data)}")
                 if code == 429 or "rate" in err_msg.lower() or "quota" in err_msg.lower():
                     raise AIQuotaError(f"{self.name} rate limit / quota exceeded: {err_msg}", provider=self.name, status_code=429)
                 if code in (401, 403) or "auth" in err_msg.lower() or "key" in err_msg.lower():
@@ -583,31 +720,42 @@ class OpenAICompatibleProvider(BaseAIProvider):
         used_response_format = True
         try:
             resp_data = _execute_http(include_json_format=True)
-        except ValueError:
+        except ValueError as ve:
             # Endpoint explicitly rejected response_format: {"type": "json_object"}
+            print(f"[{self.name.capitalize()}] Initial call rejected response_format, retrying without it: {sanitize_log_text(str(ve))}")
             used_response_format = False
             resp_data = _execute_http(include_json_format=False)
 
         content, refusal, finish_reason = _extract_choice_data(resp_data)
 
         if refusal:
+            print(f"[{self.name.capitalize()}] Model returned refusal. Structure: {format_structural_summary(resp_data)}")
             raise AIIncompletePackageError(f"{self.name} model refusal: {refusal}", provider=self.name)
 
         # Fallback attempt if response_format yielded empty/null content
         if (content is None or not content.strip()) and used_response_format:
+            print(f"[{self.name.capitalize()}] Initial call yielded empty content with response_format. Retrying without response_format...")
+            print(f"[{self.name.capitalize()}] Initial response structure: {format_structural_summary(resp_data)}")
             try:
                 fallback_data = _execute_http(include_json_format=False)
                 fb_content, fb_refusal, fb_finish = _extract_choice_data(fallback_data)
                 if fb_refusal:
+                    print(f"[{self.name.capitalize()}] Fallback model returned refusal. Structure: {format_structural_summary(fallback_data)}")
                     raise AIIncompletePackageError(f"{self.name} model refusal: {fb_refusal}", provider=self.name)
                 if fb_content and fb_content.strip():
                     content = fb_content
+                    resp_data = fallback_data
                 else:
                     finish_reason = fb_finish or finish_reason
-            except Exception:
-                pass
+                    print(f"[{self.name.capitalize()}] Fallback without response_format also yielded empty content.")
+                    print(f"[{self.name.capitalize()}] Fallback response structure: {format_structural_summary(fallback_data)}")
+            except Exception as fb_exc:
+                if isinstance(fb_exc, (AIProviderError, AIIncompletePackageError, AIMalformedResponseError)):
+                    raise
+                print(f"[{self.name.capitalize()}] Fallback request failed ({type(fb_exc).__name__}): {sanitize_log_text(str(fb_exc))}")
 
         if not content or not content.strip():
+            print(f"[{self.name.capitalize()}] Empty message content. Response structure: {format_structural_summary(resp_data)}")
             reason_suffix = f" (finish_reason: {finish_reason})" if finish_reason else ""
             raise AIMalformedResponseError(f"{self.name} returned empty message content{reason_suffix}", provider=self.name)
 
@@ -621,11 +769,14 @@ class OpenAICompatibleProvider(BaseAIProvider):
                 try:
                     data = json.loads(match.group(1))
                 except Exception as e:
+                    print(f"[{self.name.capitalize()}] Regex JSON extraction failed ({type(e).__name__}). Response structure: {format_structural_summary(resp_data)}")
                     raise AIMalformedResponseError(f"{self.name} content could not be parsed as JSON: {str(e)}", provider=self.name)
             else:
+                print(f"[{self.name.capitalize()}] Content is not valid JSON. Response structure: {format_structural_summary(resp_data)}")
                 raise AIMalformedResponseError(f"{self.name} content could not be parsed as JSON: invalid format", provider=self.name)
 
         if not isinstance(data, dict):
+            print(f"[{self.name.capitalize()}] Parsed JSON is not a dictionary ({type(data).__name__}). Response structure: {format_structural_summary(resp_data)}")
             raise AIMalformedResponseError(f"{self.name} content did not parse into a JSON object", provider=self.name)
 
         return data
@@ -748,6 +899,12 @@ def generate_content_with_fallback(
                 is_valid, reason = validate_content_package(raw_data)
                 if not is_valid:
                     print(f"[{provider_name.capitalize()}] Incomplete package: {reason}")
+                    if isinstance(raw_data, dict):
+                        pkg_keys = sorted(list(raw_data.keys()))
+                        c_count = len(raw_data["captions"]) if isinstance(raw_data.get("captions"), list) else 0
+                        t_count = len(raw_data["titles"]) if isinstance(raw_data.get("titles"), list) else 0
+                        top_count = len(raw_data["top_titles"]) if isinstance(raw_data.get("top_titles"), list) else 0
+                        print(f"[{provider_name.capitalize()}] Package structure: keys={pkg_keys} | captions={c_count} | titles={t_count} | top_titles={top_count} | has_thumb={bool(raw_data.get('thumbnail_phrase'))} | has_desc={bool(raw_data.get('description'))}")
                     raise AIIncompletePackageError(f"Incomplete package: {reason}", provider=provider_name)
 
                 # Success: clear cooldown, normalize, and return
@@ -757,21 +914,22 @@ def generate_content_with_fallback(
                 return normalize_package(raw_data, provider_name)
 
             except AIQuotaError as e:
-                print(f"[{provider_name.capitalize()}] 429 Quota Exceeded")
+                print(f"[{provider_name.capitalize()}] 429 Quota Exceeded: {sanitize_log_text(str(e))}")
                 cooldown_tracker.record_quota_cooldown(provider_name)
                 last_error = e
                 # Do NOT retry quota errors; immediately advance to next provider
                 break
 
             except AIAuthError as e:
-                print(f"[{provider_name.capitalize()}] Authentication/Configuration Error")
+                status_str = f" {e.status_code}" if getattr(e, 'status_code', None) else ""
+                print(f"[{provider_name.capitalize()}]{status_str} Authentication/Configuration Error: {sanitize_log_text(str(e))}")
                 cooldown_tracker.record_auth_cooldown(provider_name)
                 last_error = e
                 # Do NOT retry auth errors; disable for session and advance
                 break
 
             except (AIMalformedResponseError, AIIncompletePackageError) as e:
-                print(f"[{provider_name.capitalize()}] Invalid/Incomplete Response")
+                print(f"[{provider_name.capitalize()}] Invalid/Incomplete Response ({type(e).__name__}): {sanitize_log_text(str(e))}")
                 last_error = e
                 # Advance to next provider without retrying unparseable data
                 break
@@ -779,7 +937,7 @@ def generate_content_with_fallback(
             except (AITransientError, AITimeoutError, AINetworkError) as e:
                 status_code = getattr(e, 'status_code', None)
                 status_str = f" {status_code}" if status_code else ""
-                print(f"[{provider_name.capitalize()}]{status_str} Transient Error")
+                print(f"[{provider_name.capitalize()}]{status_str} Transient Error ({type(e).__name__}): {sanitize_log_text(str(e))}")
                 last_error = e
 
                 if attempt < max_transient_retries:
@@ -790,8 +948,15 @@ def generate_content_with_fallback(
                     cooldown_tracker.record_transient_cooldown(provider_name)
                     break
 
+            except AIProviderError as e:
+                status_code = getattr(e, 'status_code', None)
+                status_str = f" {status_code}" if status_code else ""
+                print(f"[{provider_name.capitalize()}]{status_str} Provider Error ({type(e).__name__}): {sanitize_log_text(str(e))}")
+                last_error = e
+                break
+
             except Exception as e:
-                print(f"[{provider_name.capitalize()}] Unexpected error")
+                print(f"[{provider_name.capitalize()}] Unexpected error ({type(e).__name__}): {sanitize_log_text(str(e))}")
                 last_error = e
                 break
 
