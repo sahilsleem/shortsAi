@@ -108,6 +108,16 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     return
 
                 mode = form_data.get('mode', 'main')
+
+                # New segment model support
+                segments_json = form_data.get('segments', '')
+                segments = []
+                if segments_json:
+                    try:
+                        segments = json.loads(segments_json)
+                    except Exception:
+                        pass
+
                 start_time = float(form_data.get('start_time', 0))
                 end_time = float(form_data.get('end_time', 0))
 
@@ -163,8 +173,44 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     if actual_dur <= 0:
                         raise Exception("Invalid video duration")
 
-                    start_time = max(0.0, min(start_time, actual_dur))
-                    end_time = max(start_time + 0.5, min(end_time, actual_dur))
+                    if segments and len(segments) > 0:
+                        concat_txt = workspace / "concat.txt"
+                        concat_out = workspace / "concat.mp4"
+                        with open(concat_txt, "w") as f:
+                            for i, seg in enumerate(segments):
+                                seg_out = workspace / f"seg_{i}.mp4"
+                                s_start = max(0.0, float(seg.get('start', 0)))
+                                s_end = min(actual_dur, float(seg.get('end', actual_dur)))
+                                from src.video_ops import get_ffmpeg_path
+                                import subprocess
+                                subprocess.run([
+                                    get_ffmpeg_path(), "-y",
+                                    "-ss", str(s_start), "-t", str(max(0.1, s_end - s_start)),
+                                    "-i", str(input_path),
+                                    "-c", "copy", str(seg_out)
+                                ], check=True)
+                                f.write(f"file '{seg_out.name}'\n")
+
+                        subprocess.run([
+                            get_ffmpeg_path(), "-y",
+                            "-f", "concat", "-safe", "0",
+                            "-i", str(concat_txt),
+                            "-c", "copy", str(concat_out)
+                        ], check=True)
+
+                        input_path = concat_out
+                        actual_dur = get_duration(str(input_path))
+
+                        start_time = 0.0
+                        end_time = actual_dur
+
+                        if mode != "main" and len(segments) > 1:
+                            cut_time = max(0.001, min(float(segments[0].get('end', 0)) - float(segments[0].get('start', 0)), actual_dur - 0.001))
+                        else:
+                            cut_time = start_time + (end_time - start_time) / 2.0
+                    else:
+                        start_time = max(0.0, min(start_time, actual_dur))
+                        end_time = max(start_time + 0.5, min(end_time, actual_dur))
 
                     if mode == "main":
                         cap = CaptionData(main_text=caption_main, curiosity_text="", emoji=caption_main_emoji, mode="main")

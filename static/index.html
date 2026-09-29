@@ -347,34 +347,33 @@
                     <div id="crop-box"></div>
                 </div>
 
-                <div class="timeline-controls" style="margin-top: 16px;">
-                    <div class="range-row">
-                        <span class="range-label label-start">Start</span>
-                        <input type="range" id="start-slider" min="0" max="100" value="0" step="0.001">
-                        <span class="time-val" id="start-val">00:00.000</span>
-                    </div>
-
-                    <div class="range-row" id="cut-slider-row">
-                        <span class="range-label label-cut">Cut ✂</span>
-                        <input type="range" id="cut-slider" min="0" max="100" value="50" step="0.001">
-                        <span class="time-val" id="cut-val">00:00.000</span>
-                    </div>
-
-                    <div class="range-row">
-                        <span class="range-label label-end">End</span>
-                        <input type="range" id="end-slider" min="0" max="100" value="100" step="0.001">
-                        <span class="time-val" id="end-val">00:00.000</span>
-                    </div>
-
-                    <div class="play-row" style="border-bottom: none; border-top: 1px solid var(--border-color); padding-bottom: 0; padding-top: 16px; margin-top: 4px;">
-                        <button class="play-btn" id="play-btn">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                        </button>
-                        <div>
-                            <div style="font-size:14px; font-weight:600;">Play selected clip</div>
+                                <div class="timeline-controls" style="margin-top: 16px;">
+                    <!-- New Trim / Clip Timeline -->
+                    <div id="trim-timeline-container" style="position: relative; width: 100%; height: 50px; background: #1e293b; border-radius: 6px; overflow: hidden; touch-action: none; user-select: none;">
+                        <!-- Filmstrip background -->
+                        <div id="filmstrip" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; opacity: 0.8;"></div>
+                        <!-- Dim overlays for excluded regions -->
+                        <div id="dim-overlays"></div>
+                        <!-- Segments -->
+                        <div id="segments-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></div>
+                        <!-- Playhead -->
+                        <div id="playhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; pointer-events: none; z-index: 10; transform: translateX(-50%);">
+                            <div style="position: absolute; top: -2px; left: -4px; width: 10px; height: 10px; background: #ef4444; border-radius: 50%;"></div>
                         </div>
                     </div>
+
+                    <div style="display: flex; justify-content: space-between; margin-top: 12px; gap: 8px;">
+                        <button type="button" id="btn-frame-prev" class="btn" style="flex: 1; padding: 8px; font-size: 13px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">◀ Frame</button>
+                        <button type="button" id="btn-play-selection" class="btn" style="flex: 2; padding: 8px; font-size: 13px; background: #4f46e5; color: #fff;">Play Selection</button>
+                        <button type="button" id="btn-frame-next" class="btn" style="flex: 1; padding: 8px; font-size: 13px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">Frame ▶</button>
+                    </div>
+
+                    <div style="display: flex; justify-content: center; gap: 12px; margin-top: 12px;">
+                        <button type="button" id="btn-split" class="btn" style="padding: 8px 16px; font-size: 13px; background: #f8fafc; color: #334155; border: 1px solid #cbd5e1;">✂ Split</button>
+                        <button type="button" id="btn-delete-segment" class="btn" style="padding: 8px 16px; font-size: 13px; background: #fef2f2; color: #ef4444; border: 1px solid #fecaca;">🗑 Delete</button>
+                    </div>
                 </div>
+            </div>
             </div>
 
             <div class="section-label">✨ AI Writer</div>
@@ -545,13 +544,17 @@
         const videoElement = document.getElementById('video-element');
         const cropBox = document.getElementById('crop-box');
         const zoomSlider = document.getElementById('zoom-slider');
-        const startSlider = document.getElementById('start-slider');
-        const cutSlider = document.getElementById('cut-slider');
-        const endSlider = document.getElementById('end-slider');
-        const startVal = document.getElementById('start-val');
-        const cutVal = document.getElementById('cut-val');
-        const endVal = document.getElementById('end-val');
-        const playBtn = document.getElementById('play-btn');
+        // Timeline references
+        const timelineContainer = document.getElementById('trim-timeline-container');
+        const filmstrip = document.getElementById('filmstrip');
+        const dimOverlays = document.getElementById('dim-overlays');
+        const segmentsContainer = document.getElementById('segments-container');
+        const playhead = document.getElementById('playhead');
+        const btnFramePrev = document.getElementById('btn-frame-prev');
+        const btnPlaySelection = document.getElementById('btn-play-selection');
+        const btnFrameNext = document.getElementById('btn-frame-next');
+        const btnSplit = document.getElementById('btn-split');
+        const btnDeleteSegment = document.getElementById('btn-delete-segment');
         const resultSection = document.getElementById('result-section');
         const publishingSection = document.getElementById('publishing-section');
         const publishingTitleInput = document.getElementById('publishing-title');
@@ -570,14 +573,14 @@
             e.target.classList.add('active');
             document.getElementById('mode-main').classList.remove('active');
             document.getElementById('curiosity-fields').style.display = 'block';
-            document.getElementById('cut-slider-row').style.display = 'flex';
+
         };
         document.getElementById('mode-main').onclick = (e) => {
             currentMode = 'main';
             e.target.classList.add('active');
             document.getElementById('mode-curiosity').classList.remove('active');
             document.getElementById('curiosity-fields').style.display = 'none';
-            document.getElementById('cut-slider-row').style.display = 'none';
+
         };
 
         let enhanceEnabled = false;
@@ -984,28 +987,12 @@
             return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
         }
 
-        function checkLoop() {
-            if (!isPlaying) return;
-            const start = parseFloat(startSlider.value);
-            const end = parseFloat(endSlider.value);
-            if (videoElement.currentTime >= end) {
-                videoElement.currentTime = start;
-            }
-            playbackLoopId = requestAnimationFrame(checkLoop);
-        }
+
 
         const playIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
         const pauseIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
 
-        function stopPlayback() {
-            isPlaying = false;
-            videoElement.pause();
-            playBtn.innerHTML = playIcon;
-            if (playbackLoopId !== null) {
-                cancelAnimationFrame(playbackLoopId);
-                playbackLoopId = null;
-            }
-        }
+
 
         fileInput.onchange = (e) => {
             if(!e.target.files[0]) return;
@@ -1018,16 +1005,12 @@
 
             videoElement.onloadedmetadata = () => {
                 const dur = videoElement.duration;
-                startSlider.max = dur;
-                cutSlider.max = dur;
-                endSlider.max = dur;
-                startSlider.value = 0;
-                cutSlider.value = dur / 2;
-                endSlider.value = dur;
 
-                startVal.innerText = formatTime(0);
-                cutVal.innerText = formatTime(dur / 2);
-                endVal.innerText = formatTime(dur);
+                // Initialize timeline
+                segments = [{ start: 0, end: dur }];
+                activeSegmentIndex = 0;
+                generateFilmstrip();
+                renderTimeline();
 
                 videoElement.currentTime = dur / 2;
 
@@ -1085,69 +1068,285 @@
             }
         }
 
-        startSlider.oninput = () => {
-            let s = parseFloat(startSlider.value);
-            let c = parseFloat(cutSlider.value);
-            let e = parseFloat(endSlider.value);
-            if (s >= c) {
-                c = Math.min(s + 0.001, e - 0.001);
-                if (s >= c) s = Math.max(c - 0.001, 0);
-                cutSlider.value = c;
-                cutVal.innerText = formatTime(c);
-                startSlider.value = s;
+
+        // --- NEW TIMELINE LOGIC ---
+        let segments = [];
+        let activeSegmentIndex = 0;
+
+        function generateFilmstrip() {
+            filmstrip.innerHTML = '';
+            // Basic repeating filmstrip using the same video to save memory
+            // But we'll just style it simply without generating 100 canvases
+            filmstrip.style.background = '#475569';
+            // Optionally, create 1 canvas taking a snapshot, repeated, but for performance, keep it plain or minimal.
+            filmstrip.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;">[ Video Track ]</div>`;
+        }
+
+        function renderTimeline() {
+            if (!videoElement.duration) return;
+            const dur = videoElement.duration;
+
+            dimOverlays.innerHTML = '';
+            segmentsContainer.innerHTML = '';
+
+            segments.forEach((seg, idx) => {
+                const sPct = (seg.start / dur) * 100;
+                const ePct = (seg.end / dur) * 100;
+                const wPct = ePct - sPct;
+
+                const segEl = document.createElement('div');
+                segEl.style.position = 'absolute';
+                segEl.style.left = sPct + '%';
+                segEl.style.width = wPct + '%';
+                segEl.style.top = '0';
+                segEl.style.bottom = '0';
+                segEl.style.boxSizing = 'border-box';
+
+                if (idx === activeSegmentIndex) {
+                    segEl.style.border = '2px solid #ef4444';
+                    segEl.style.background = 'rgba(239, 68, 68, 0.2)';
+                    segEl.style.pointerEvents = 'auto'; // allow dragging
+
+                    // Create drag handler for the segment body
+                    segEl.onmousedown = (e) => startDragSegment(e, idx);
+                    segEl.ontouchstart = (e) => startDragSegment(e, idx);
+                } else {
+                    segEl.style.border = '1px solid #94a3b8';
+                    segEl.style.background = 'rgba(255, 255, 255, 0.2)';
+
+                    segEl.style.pointerEvents = 'auto';
+                    segEl.onclick = () => {
+                        activeSegmentIndex = idx;
+                        renderTimeline();
+                        requestSeek(segments[idx].start);
+                    };
+                }
+                segmentsContainer.appendChild(segEl);
+            });
+
+            // Draw dimmed areas
+            let lastEnd = 0;
+            segments.forEach(seg => {
+                if (seg.start > lastEnd) {
+                    addDim(lastEnd, seg.start, dur);
+                }
+                lastEnd = seg.end;
+            });
+            if (lastEnd < dur) {
+                addDim(lastEnd, dur, dur);
             }
-            startVal.innerText = formatTime(s);
-            requestSeek(s);
+
+            updateHandles();
+            updatePlayhead(videoElement.currentTime);
+        }
+
+        function addDim(start, end, dur) {
+            const dim = document.createElement('div');
+            dim.style.position = 'absolute';
+            dim.style.left = (start / dur * 100) + '%';
+            dim.style.width = ((end - start) / dur * 100) + '%';
+            dim.style.top = '0';
+            dim.style.bottom = '0';
+            dim.style.background = 'rgba(0, 0, 0, 0.6)';
+            dim.style.pointerEvents = 'none';
+            dimOverlays.appendChild(dim);
+        }
+
+        // Handles
+        let activeHandle = null; // 'in', 'out', or 'segment'
+
+        timelineContainer.onmousedown = (e) => {
+            if (e.target.id === 'handle-in') { activeHandle = 'in'; e.preventDefault(); }
+            else if (e.target.id === 'handle-out') { activeHandle = 'out'; e.preventDefault(); }
+            else if (e.target.id === 'trim-timeline-container' || e.target.id === 'filmstrip') {
+                activeHandle = 'playhead';
+                handlePlayheadDrag(e);
+            }
+        };
+        timelineContainer.ontouchstart = (e) => {
+            if (e.target.id === 'handle-in') { activeHandle = 'in'; e.preventDefault(); }
+            else if (e.target.id === 'handle-out') { activeHandle = 'out'; e.preventDefault(); }
+            else if (e.target.id === 'trim-timeline-container' || e.target.id === 'filmstrip') {
+                activeHandle = 'playhead';
+                handlePlayheadDrag(e);
+            }
         };
 
-        cutSlider.oninput = () => {
-            let s = parseFloat(startSlider.value);
-            let c = parseFloat(cutSlider.value);
-            let e = parseFloat(endSlider.value);
-            if (c <= s) {
-                c = Math.min(s + 0.001, e - 0.001);
-                cutSlider.value = c;
+        let dragSegStartX = 0;
+        let dragSegOriginalStart = 0;
+        let dragSegOriginalEnd = 0;
+
+        function startDragSegment(e, idx) {
+            if (e.target.id === 'handle-in' || e.target.id === 'handle-out') return;
+            activeHandle = 'segment';
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            dragSegStartX = cx;
+            dragSegOriginalStart = segments[idx].start;
+            dragSegOriginalEnd = segments[idx].end;
+            e.preventDefault();
+        }
+
+        window.addEventListener('mousemove', handleTimelineDrag);
+        window.addEventListener('touchmove', handleTimelineDrag, {passive: false});
+
+        window.addEventListener('mouseup', () => { activeHandle = null; });
+        window.addEventListener('touchend', () => { activeHandle = null; });
+
+        function handleTimelineDrag(e) {
+            if (!activeHandle) return;
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            const rect = timelineContainer.getBoundingClientRect();
+            let pct = (cx - rect.left) / rect.width;
+            pct = Math.max(0, Math.min(1, pct));
+            const t = pct * videoElement.duration;
+
+            const seg = segments[activeSegmentIndex];
+
+            if (activeHandle === 'in') {
+                seg.start = Math.max(0, Math.min(t, seg.end - 0.1));
+                renderTimeline();
+                requestSeek(seg.start);
+                e.preventDefault();
+            } else if (activeHandle === 'out') {
+                seg.end = Math.min(videoElement.duration, Math.max(t, seg.start + 0.1));
+                renderTimeline();
+                requestSeek(seg.end);
+                e.preventDefault();
+            } else if (activeHandle === 'segment') {
+                const dx = (cx - dragSegStartX) / rect.width * videoElement.duration;
+                let newStart = dragSegOriginalStart + dx;
+                let newEnd = dragSegOriginalEnd + dx;
+                const dur = newEnd - newStart;
+
+                if (newStart < 0) { newStart = 0; newEnd = dur; }
+                if (newEnd > videoElement.duration) { newEnd = videoElement.duration; newStart = newEnd - dur; }
+
+                seg.start = newStart;
+                seg.end = newEnd;
+                renderTimeline();
+                requestSeek(seg.start);
+                e.preventDefault();
+            } else if (activeHandle === 'playhead') {
+                handlePlayheadDrag(e);
             }
-            if (c >= e) {
-                c = Math.max(e - 0.001, s + 0.001);
-                cutSlider.value = c;
+        }
+
+        function handlePlayheadDrag(e) {
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            const rect = timelineContainer.getBoundingClientRect();
+            let pct = (cx - rect.left) / rect.width;
+            pct = Math.max(0, Math.min(1, pct));
+            const t = pct * videoElement.duration;
+            requestSeek(t);
+            updatePlayhead(t);
+            if (e.cancelable) e.preventDefault();
+        }
+
+        function updateHandles() {
+            if (!videoElement.duration || segments.length === 0) return;
+            const seg = segments[activeSegmentIndex];
+            const inEl = document.getElementById('handle-in');
+            const outEl = document.getElementById('handle-out');
+            inEl.style.left = (seg.start / videoElement.duration * 100) + '%';
+            outEl.style.left = (seg.end / videoElement.duration * 100) + '%';
+
+            // hide handles if segment is deleted/empty
+            if (seg.start === 0 && seg.end === 0) {
+                inEl.style.display = 'none';
+                outEl.style.display = 'none';
+            } else {
+                inEl.style.display = 'flex';
+                outEl.style.display = 'flex';
             }
-            cutVal.innerText = formatTime(c);
-            requestSeek(c);
+        }
+
+        function updatePlayhead(time) {
+            if (!videoElement.duration) return;
+            const pct = (time / videoElement.duration) * 100;
+            playhead.style.left = pct + '%';
+        }
+
+        videoElement.addEventListener('timeupdate', () => {
+            updatePlayhead(videoElement.currentTime);
+        });
+
+        // Frame stepping
+        const fps = 30; // fallback standard fps
+        btnFramePrev.onclick = () => {
+            requestSeek(Math.max(0, videoElement.currentTime - (1/fps)));
+        };
+        btnFrameNext.onclick = () => {
+            requestSeek(Math.min(videoElement.duration, videoElement.currentTime + (1/fps)));
         };
 
-        endSlider.oninput = () => {
-            let s = parseFloat(startSlider.value);
-            let c = parseFloat(cutSlider.value);
-            let e = parseFloat(endSlider.value);
-            if (e <= c) {
-                c = Math.max(e - 0.001, s + 0.001);
-                if (e <= c) e = Math.min(c + 0.001, videoElement.duration);
-                cutSlider.value = c;
-                cutVal.innerText = formatTime(c);
-                endSlider.value = e;
+        // Split
+        btnSplit.onclick = () => {
+            if (segments.length === 0) return;
+            const t = videoElement.currentTime;
+            const seg = segments[activeSegmentIndex];
+            if (t > seg.start + 0.1 && t < seg.end - 0.1) {
+                const oldEnd = seg.end;
+                seg.end = t;
+                const newSeg = { start: t, end: oldEnd };
+                segments.splice(activeSegmentIndex + 1, 0, newSeg);
+                activeSegmentIndex++;
+                renderTimeline();
             }
-            endVal.innerText = formatTime(e);
-            requestSeek(e);
         };
 
-        playBtn.onclick = () => {
+        // Delete
+        btnDeleteSegment.onclick = () => {
+            if (segments.length === 0) return;
+            segments.splice(activeSegmentIndex, 1);
+            if (segments.length === 0) {
+                // Must have at least one segment
+                segments.push({start: 0, end: videoElement.duration});
+            }
+            activeSegmentIndex = Math.max(0, activeSegmentIndex - 1);
+            renderTimeline();
+            requestSeek(segments[activeSegmentIndex].start);
+        };
+
+        // Play Selection
+        btnPlaySelection.onclick = () => {
             if (isPlaying) {
                 stopPlayback();
+                btnPlaySelection.innerText = "Play Selection";
             } else {
-                let s = parseFloat(startSlider.value);
-                let e = parseFloat(endSlider.value);
-                if (videoElement.currentTime < s || videoElement.currentTime >= e) {
-                    videoElement.currentTime = s;
-                }
+                if (segments.length === 0) return;
+                const seg = segments[activeSegmentIndex];
+                videoElement.currentTime = seg.start;
                 videoElement.play();
                 isPlaying = true;
-                playBtn.innerHTML = pauseIcon;
+                btnPlaySelection.innerText = "Stop";
+
                 checkLoop();
             }
         };
 
-        zoomSlider.oninput = () => {
+        function checkLoop() {
+            if (!isPlaying) return;
+            const seg = segments[activeSegmentIndex];
+            if (videoElement.currentTime >= seg.end) {
+                stopPlayback();
+                btnPlaySelection.innerText = "Play Selection";
+                return;
+            }
+            playbackLoopId = requestAnimationFrame(checkLoop);
+        }
+
+        function stopPlayback() {
+            isPlaying = false;
+            videoElement.pause();
+            if (playbackLoopId !== null) {
+                cancelAnimationFrame(playbackLoopId);
+                playbackLoopId = null;
+            }
+            btnPlaySelection.innerText = "Play Selection";
+        }
+
+        // --- END NEW TIMELINE LOGIC ---
+zoomSlider.oninput = () => {
             updateCropBoxSize();
             enforceBounds();
             updateCropCoords();
@@ -1230,9 +1429,7 @@
             const fd = new FormData();
             fd.append('video', file);
             fd.append('mode', currentMode);
-            fd.append('start_time', parseFloat(startSlider.value));
-            fd.append('cut_time', parseFloat(cutSlider.value));
-            fd.append('end_time', parseFloat(endSlider.value));
+            fd.append('segments', JSON.stringify(segments));
             fd.append('crop_x', cropX);
             fd.append('crop_y', cropY);
             fd.append('crop_size', Math.round(currentCropSize));
