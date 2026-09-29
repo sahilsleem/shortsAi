@@ -356,6 +356,13 @@
                         <div id="dim-overlays"></div>
                         <!-- Segments -->
                         <div id="segments-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></div>
+                        <!-- Active Segment Handles -->
+                        <div id="handle-in" style="position: absolute; top: 0; bottom: 0; width: 20px; background: rgba(255, 255, 255, 0.9); cursor: ew-resize; pointer-events: auto; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; z-index: 5; border-radius: 4px; border: 1px solid #94a3b8;">
+                            <div style="width: 2px; height: 20px; background: #334155;"></div>
+                        </div>
+                        <div id="handle-out" style="position: absolute; top: 0; bottom: 0; width: 20px; background: rgba(255, 255, 255, 0.9); cursor: ew-resize; pointer-events: auto; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; z-index: 5; border-radius: 4px; border: 1px solid #94a3b8;">
+                            <div style="width: 2px; height: 20px; background: #334155;"></div>
+                        </div>
                         <!-- Playhead -->
                         <div id="playhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; pointer-events: none; z-index: 10; transform: translateX(-50%);">
                             <div style="position: absolute; top: -2px; left: -4px; width: 10px; height: 10px; background: #ef4444; border-radius: 50%;"></div>

@@ -1575,3 +1575,11 @@ def test_package_repair_failure():
     is_valid, msg = validate_content_package(pkg)
     assert not is_valid
     assert "missing #shorts" in msg
+
+def test_index_html_timeline_handles_exist():
+    """Test 57: Ensure handle-in and handle-out exist in index.html to prevent upload initialization crash."""
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        html = f.read()
+    
+    assert 'id="handle-in"' in html
+    assert 'id="handle-out"' in html
