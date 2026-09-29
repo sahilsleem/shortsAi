@@ -356,12 +356,16 @@
                         <div id="dim-overlays"></div>
                         <!-- Segments -->
                         <div id="segments-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></div>
-                        <!-- Active Segment Handles -->
-                        <div id="handle-in" style="position: absolute; top: 0; bottom: 0; width: 20px; background: rgba(255, 255, 255, 0.9); cursor: ew-resize; pointer-events: auto; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; z-index: 5; border-radius: 4px; border: 1px solid #94a3b8;">
-                            <div style="width: 2px; height: 20px; background: #334155;"></div>
+                        <!-- Active Segment Handles with 36px touch targets and compact visual pill -->
+                        <div id="handle-in" style="position: absolute; top: 0; bottom: 0; width: 36px; cursor: ew-resize; pointer-events: auto; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; z-index: 15; touch-action: none; user-select: none;">
+                            <div style="width: 12px; height: calc(100% - 6px); background: #ffffff; border: 1.5px solid #475569; border-radius: 4px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.35); box-sizing: border-box;">
+                                <div style="width: 2px; height: 14px; background: #475569; border-radius: 1px;"></div>
+                            </div>
                         </div>
-                        <div id="handle-out" style="position: absolute; top: 0; bottom: 0; width: 20px; background: rgba(255, 255, 255, 0.9); cursor: ew-resize; pointer-events: auto; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; z-index: 5; border-radius: 4px; border: 1px solid #94a3b8;">
-                            <div style="width: 2px; height: 20px; background: #334155;"></div>
+                        <div id="handle-out" style="position: absolute; top: 0; bottom: 0; width: 36px; cursor: ew-resize; pointer-events: auto; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; z-index: 15; touch-action: none; user-select: none;">
+                            <div style="width: 12px; height: calc(100% - 6px); background: #ffffff; border: 1.5px solid #475569; border-radius: 4px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.35); box-sizing: border-box;">
+                                <div style="width: 2px; height: 14px; background: #475569; border-radius: 1px;"></div>
+                            </div>
                         </div>
                         <!-- Playhead -->
                         <div id="playhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; pointer-events: none; z-index: 10; transform: translateX(-50%);">
@@ -370,9 +374,9 @@
                     </div>
 
                     <div style="display: flex; justify-content: space-between; margin-top: 12px; gap: 8px;">
-                        <button type="button" id="btn-frame-prev" class="btn" style="flex: 1; padding: 8px; font-size: 13px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">◀ Frame</button>
+                        <button type="button" id="btn-frame-prev" class="btn" style="flex: 1; padding: 8px; font-size: 13px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; touch-action: none; user-select: none; -webkit-user-select: none;">◀ Frame</button>
                         <button type="button" id="btn-play-selection" class="btn" style="flex: 2; padding: 8px; font-size: 13px; background: #4f46e5; color: #fff;">Play Selection</button>
-                        <button type="button" id="btn-frame-next" class="btn" style="flex: 1; padding: 8px; font-size: 13px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">Frame ▶</button>
+                        <button type="button" id="btn-frame-next" class="btn" style="flex: 1; padding: 8px; font-size: 13px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; touch-action: none; user-select: none; -webkit-user-select: none;">Frame ▶</button>
                     </div>
 
                     <div style="display: flex; justify-content: center; gap: 12px; margin-top: 12px;">
@@ -433,8 +437,8 @@
                 <div class="form-group">
                     <label>Main Caption Font</label>
                     <select id="font-main">
+                        <option value="Alike" selected>Alike</option>
                         <option value="Calistoga">Calistoga</option>
-                        <option value="Alike">Alike</option>
                         <option value="Caslon OS">Caslon OS</option>
                         <option value="Fira Mono">Fira Mono</option>
                         <option value="Source Sans Pro">Source Sans Pro</option>
@@ -1076,17 +1080,14 @@
         }
 
 
-        // --- NEW TIMELINE LOGIC ---
+        // --- TIMELINE LOGIC WITH REFINED TOUCH & FRAME CONTROLS ---
         let segments = [];
         let activeSegmentIndex = 0;
 
         function generateFilmstrip() {
             filmstrip.innerHTML = '';
-            // Basic repeating filmstrip using the same video to save memory
-            // But we'll just style it simply without generating 100 canvases
             filmstrip.style.background = '#475569';
-            // Optionally, create 1 canvas taking a snapshot, repeated, but for performance, keep it plain or minimal.
-            filmstrip.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;">[ Video Track ]</div>`;
+            filmstrip.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;">[ Video Track ]</div>';
         }
 
         function renderTimeline() {
@@ -1099,39 +1100,29 @@
             segments.forEach((seg, idx) => {
                 const sPct = (seg.start / dur) * 100;
                 const ePct = (seg.end / dur) * 100;
-                const wPct = ePct - sPct;
+                const wPct = Math.max(0, ePct - sPct);
 
                 const segEl = document.createElement('div');
                 segEl.style.position = 'absolute';
                 segEl.style.left = sPct + '%';
                 segEl.style.width = wPct + '%';
+                segEl.style.minWidth = '4px'; // Keeps tiny segments visible
                 segEl.style.top = '0';
                 segEl.style.bottom = '0';
                 segEl.style.boxSizing = 'border-box';
+                segEl.style.pointerEvents = 'auto';
 
                 if (idx === activeSegmentIndex) {
                     segEl.style.border = '2px solid #ef4444';
-                    segEl.style.background = 'rgba(239, 68, 68, 0.2)';
-                    segEl.style.pointerEvents = 'auto'; // allow dragging
-
-                    // Create drag handler for the segment body
-                    segEl.onmousedown = (e) => startDragSegment(e, idx);
-                    segEl.ontouchstart = (e) => startDragSegment(e, idx);
+                    segEl.style.background = 'rgba(239, 68, 68, 0.25)';
                 } else {
                     segEl.style.border = '1px solid #94a3b8';
                     segEl.style.background = 'rgba(255, 255, 255, 0.2)';
-
-                    segEl.style.pointerEvents = 'auto';
-                    segEl.onclick = () => {
-                        activeSegmentIndex = idx;
-                        renderTimeline();
-                        requestSeek(segments[idx].start);
-                    };
                 }
                 segmentsContainer.appendChild(segEl);
             });
 
-            // Draw dimmed areas
+            // Draw dimmed areas for cut/excluded portions
             let lastEnd = 0;
             segments.forEach(seg => {
                 if (seg.start > lastEnd) {
@@ -1159,48 +1150,147 @@
             dimOverlays.appendChild(dim);
         }
 
-        // Handles
-        let activeHandle = null; // 'in', 'out', or 'segment'
+        // Deterministic hit-testing for handles, segments, and tiny segments
+        function hitTestTimeline(px, rectWidth, dur) {
+            if (!dur || segments.length === 0) return { type: 'none' };
 
-        timelineContainer.onmousedown = (e) => {
-            if (e.target.id === 'handle-in') { activeHandle = 'in'; e.preventDefault(); }
-            else if (e.target.id === 'handle-out') { activeHandle = 'out'; e.preventDefault(); }
-            else if (e.target.id === 'trim-timeline-container' || e.target.id === 'filmstrip') {
-                activeHandle = 'playhead';
-                handlePlayheadDrag(e);
-            }
-        };
-        timelineContainer.ontouchstart = (e) => {
-            if (e.target.id === 'handle-in') { activeHandle = 'in'; e.preventDefault(); }
-            else if (e.target.id === 'handle-out') { activeHandle = 'out'; e.preventDefault(); }
-            else if (e.target.id === 'trim-timeline-container' || e.target.id === 'filmstrip') {
-                activeHandle = 'playhead';
-                handlePlayheadDrag(e);
-            }
-        };
+            // 1. Exact handle hit for active segment
+            if (activeSegmentIndex >= 0 && activeSegmentIndex < segments.length) {
+                const activeSeg = segments[activeSegmentIndex];
+                const inPx = (activeSeg.start / dur) * rectWidth;
+                const outPx = (activeSeg.end / dur) * rectWidth;
+                const HANDLE_TOUCH_RADIUS = 22; // 44px effective touch target
 
+                const prevEPx = activeSegmentIndex > 0 ? (segments[activeSegmentIndex - 1].end / dur) * rectWidth : 0;
+                const nextSPx = activeSegmentIndex < segments.length - 1 ? (segments[activeSegmentIndex + 1].start / dur) * rectWidth : rectWidth;
+
+                const inMinPx = Math.max(prevEPx, inPx - HANDLE_TOUCH_RADIUS);
+                const inMaxPx = inPx + Math.min(HANDLE_TOUCH_RADIUS, (outPx - inPx) / 2);
+
+                const outMinPx = outPx - Math.min(HANDLE_TOUCH_RADIUS, (outPx - inPx) / 2);
+                const outMaxPx = Math.min(nextSPx, outPx + HANDLE_TOUCH_RADIUS);
+
+                const isInHit = px >= inMinPx && px <= inMaxPx;
+                const isOutHit = px >= outMinPx && px <= outMaxPx;
+
+                if (isInHit && isOutHit) {
+                    const distIn = Math.abs(px - inPx);
+                    const distOut = Math.abs(px - outPx);
+                    return { type: distIn <= distOut ? 'handle-in' : 'handle-out', index: activeSegmentIndex };
+                }
+                if (isInHit) {
+                    return { type: 'handle-in', index: activeSegmentIndex };
+                }
+                if (isOutHit) {
+                    return { type: 'handle-out', index: activeSegmentIndex };
+                }
+            }
+
+            // 2. Exact segment body hit
+            let exactHitIdx = -1;
+            let closestCenterDist = Infinity;
+            segments.forEach((seg, idx) => {
+                const sPx = (seg.start / dur) * rectWidth;
+                const ePx = (seg.end / dur) * rectWidth;
+                if (px >= sPx && px <= ePx) {
+                    const center = (sPx + ePx) / 2;
+                    const d = Math.abs(px - center);
+                    if (d < closestCenterDist) {
+                        closestCenterDist = d;
+                        exactHitIdx = idx;
+                    }
+                }
+            });
+            if (exactHitIdx !== -1) {
+                return { type: 'segment', index: exactHitIdx };
+            }
+
+            // 3. Expanded segment touch target (especially for tiny segments)
+            let bestExpandedIdx = -1;
+            let minEdgeDist = Infinity;
+            const EXPANDED_RADIUS = 24;
+            segments.forEach((seg, idx) => {
+                const sPx = (seg.start / dur) * rectWidth;
+                const ePx = (seg.end / dur) * rectWidth;
+                const edgeDist = Math.max(0, sPx - px, px - ePx);
+                if (edgeDist <= EXPANDED_RADIUS && edgeDist < minEdgeDist) {
+                    minEdgeDist = edgeDist;
+                    bestExpandedIdx = idx;
+                }
+            });
+            if (bestExpandedIdx !== -1) {
+                return { type: 'segment', index: bestExpandedIdx };
+            }
+
+            // 4. Narrow gap between segments -> nearest segment wins
+            let nearestIdx = -1;
+            let minGapDist = Infinity;
+            segments.forEach((seg, idx) => {
+                const sPx = (seg.start / dur) * rectWidth;
+                const ePx = (seg.end / dur) * rectWidth;
+                const d = Math.min(Math.abs(px - sPx), Math.abs(px - ePx));
+                if (d < minGapDist) {
+                    minGapDist = d;
+                    nearestIdx = idx;
+                }
+            });
+            if (minGapDist <= 32 && nearestIdx !== -1) {
+                return { type: 'segment', index: nearestIdx };
+            }
+
+            // 5. Far from segments -> Playhead scrub
+            return { type: 'playhead', index: -1 };
+        }
+
+        let activeHandle = null; // 'in', 'out', 'segment', or 'playhead'
         let dragSegStartX = 0;
         let dragSegOriginalStart = 0;
         let dragSegOriginalEnd = 0;
 
-        function startDragSegment(e, idx) {
-            if (e.target.id === 'handle-in' || e.target.id === 'handle-out') return;
-            activeHandle = 'segment';
+        function onTimelinePointerDown(e) {
+            if (!videoElement.duration || segments.length === 0) return;
             const cx = e.touches ? e.touches[0].clientX : e.clientX;
-            dragSegStartX = cx;
-            dragSegOriginalStart = segments[idx].start;
-            dragSegOriginalEnd = segments[idx].end;
-            e.preventDefault();
+            const rect = timelineContainer.getBoundingClientRect();
+            const px = Math.max(0, Math.min(rect.width, cx - rect.left));
+            const dur = videoElement.duration;
+            const t = (px / rect.width) * dur;
+
+            const hit = hitTestTimeline(px, rect.width, dur);
+
+            if (hit.type === 'handle-in') {
+                activeHandle = 'in';
+                requestSeek(segments[activeSegmentIndex].start);
+                updatePlayhead(segments[activeSegmentIndex].start);
+            } else if (hit.type === 'handle-out') {
+                activeHandle = 'out';
+                requestSeek(segments[activeSegmentIndex].end);
+                updatePlayhead(segments[activeSegmentIndex].end);
+            } else if (hit.type === 'segment') {
+                if (activeSegmentIndex !== hit.index) {
+                    activeSegmentIndex = hit.index;
+                    renderTimeline();
+                }
+                activeHandle = 'segment';
+                dragSegStartX = cx;
+                dragSegOriginalStart = segments[activeSegmentIndex].start;
+                dragSegOriginalEnd = segments[activeSegmentIndex].end;
+                requestSeek(segments[activeSegmentIndex].start);
+                updatePlayhead(segments[activeSegmentIndex].start);
+            } else {
+                activeHandle = 'playhead';
+                requestSeek(t);
+                updatePlayhead(t);
+            }
+
+            if (e.cancelable) e.preventDefault();
         }
 
-        window.addEventListener('mousemove', handleTimelineDrag);
-        window.addEventListener('touchmove', handleTimelineDrag, {passive: false});
-
-        window.addEventListener('mouseup', () => { activeHandle = null; });
-        window.addEventListener('touchend', () => { activeHandle = null; });
+        timelineContainer.addEventListener('pointerdown', onTimelinePointerDown);
+        timelineContainer.addEventListener('mousedown', onTimelinePointerDown);
+        timelineContainer.addEventListener('touchstart', onTimelinePointerDown, { passive: false });
 
         function handleTimelineDrag(e) {
-            if (!activeHandle) return;
+            if (!activeHandle || !videoElement.duration || segments.length === 0) return;
             const cx = e.touches ? e.touches[0].clientX : e.clientX;
             const rect = timelineContainer.getBoundingClientRect();
             let pct = (cx - rect.left) / rect.width;
@@ -1208,56 +1298,75 @@
             const t = pct * videoElement.duration;
 
             const seg = segments[activeSegmentIndex];
+            if (!seg) return;
 
             if (activeHandle === 'in') {
-                seg.start = Math.max(0, Math.min(t, seg.end - 0.1));
+                // Stretch Start (IN handle)
+                const prevEnd = activeSegmentIndex > 0 ? segments[activeSegmentIndex - 1].end : 0;
+                seg.start = Math.max(prevEnd, Math.min(t, seg.end - 0.05));
                 renderTimeline();
                 requestSeek(seg.start);
-                e.preventDefault();
+                updatePlayhead(seg.start);
+                if (e.cancelable) e.preventDefault();
             } else if (activeHandle === 'out') {
-                seg.end = Math.min(videoElement.duration, Math.max(t, seg.start + 0.1));
+                // Stretch End (OUT handle)
+                const nextStart = activeSegmentIndex < segments.length - 1 ? segments[activeSegmentIndex + 1].start : videoElement.duration;
+                seg.end = Math.min(nextStart, Math.max(t, seg.start + 0.05));
                 renderTimeline();
                 requestSeek(seg.end);
-                e.preventDefault();
+                updatePlayhead(seg.end);
+                if (e.cancelable) e.preventDefault();
             } else if (activeHandle === 'segment') {
+                // Move entire segment, preserving duration
                 const dx = (cx - dragSegStartX) / rect.width * videoElement.duration;
                 let newStart = dragSegOriginalStart + dx;
                 let newEnd = dragSegOriginalEnd + dx;
                 const dur = newEnd - newStart;
 
-                if (newStart < 0) { newStart = 0; newEnd = dur; }
-                if (newEnd > videoElement.duration) { newEnd = videoElement.duration; newStart = newEnd - dur; }
+                const prevEnd = activeSegmentIndex > 0 ? segments[activeSegmentIndex - 1].end : 0;
+                const nextStart = activeSegmentIndex < segments.length - 1 ? segments[activeSegmentIndex + 1].start : videoElement.duration;
+
+                if (newStart < prevEnd) {
+                    newStart = prevEnd;
+                    newEnd = newStart + dur;
+                }
+                if (newEnd > nextStart) {
+                    newEnd = nextStart;
+                    newStart = newEnd - dur;
+                    if (newStart < prevEnd) newStart = prevEnd;
+                }
 
                 seg.start = newStart;
                 seg.end = newEnd;
                 renderTimeline();
                 requestSeek(seg.start);
-                e.preventDefault();
+                updatePlayhead(seg.start);
+                if (e.cancelable) e.preventDefault();
             } else if (activeHandle === 'playhead') {
-                handlePlayheadDrag(e);
+                requestSeek(t);
+                updatePlayhead(t);
+                if (e.cancelable) e.preventDefault();
             }
         }
 
-        function handlePlayheadDrag(e) {
-            const cx = e.touches ? e.touches[0].clientX : e.clientX;
-            const rect = timelineContainer.getBoundingClientRect();
-            let pct = (cx - rect.left) / rect.width;
-            pct = Math.max(0, Math.min(1, pct));
-            const t = pct * videoElement.duration;
-            requestSeek(t);
-            updatePlayhead(t);
-            if (e.cancelable) e.preventDefault();
-        }
+        window.addEventListener('pointermove', handleTimelineDrag);
+        window.addEventListener('pointerup', () => { activeHandle = null; });
+        window.addEventListener('pointercancel', () => { activeHandle = null; });
+        window.addEventListener('mousemove', handleTimelineDrag);
+        window.addEventListener('touchmove', handleTimelineDrag, { passive: false });
+        window.addEventListener('mouseup', () => { activeHandle = null; });
+        window.addEventListener('touchend', () => { activeHandle = null; });
 
         function updateHandles() {
             if (!videoElement.duration || segments.length === 0) return;
             const seg = segments[activeSegmentIndex];
             const inEl = document.getElementById('handle-in');
             const outEl = document.getElementById('handle-out');
+            if (!inEl || !outEl || !seg) return;
+
             inEl.style.left = (seg.start / videoElement.duration * 100) + '%';
             outEl.style.left = (seg.end / videoElement.duration * 100) + '%';
 
-            // hide handles if segment is deleted/empty
             if (seg.start === 0 && seg.end === 0) {
                 inEl.style.display = 'none';
                 outEl.style.display = 'none';
@@ -1274,24 +1383,77 @@
         }
 
         videoElement.addEventListener('timeupdate', () => {
-            updatePlayhead(videoElement.currentTime);
+            if (!activeHandle) {
+                updatePlayhead(videoElement.currentTime);
+            }
         });
 
-        // Frame stepping
-        const fps = 30; // fallback standard fps
-        btnFramePrev.onclick = () => {
-            requestSeek(Math.max(0, videoElement.currentTime - (1/fps)));
-        };
-        btnFrameNext.onclick = () => {
-            requestSeek(Math.min(videoElement.duration, videoElement.currentTime + (1/fps)));
-        };
+        // Frame Stepping with Single Tap and Accelerated Long-Press
+        function setupFrameButton(btn, direction) {
+            let holdTimeout = null;
+            let stepInterval = null;
+            let holdStartTime = 0;
+            let virtualTargetTime = 0;
+            const fps = 30;
+            const frameDur = 1 / fps; // ~0.0333s
+
+            function stepFrame(multiplier = 1) {
+                if (!videoElement.duration) return;
+                virtualTargetTime = Math.max(0, Math.min(videoElement.duration, virtualTargetTime + direction * frameDur * multiplier));
+                requestSeek(virtualTargetTime);
+                updatePlayhead(virtualTargetTime);
+            }
+
+            function stopStepping() {
+                if (holdTimeout) {
+                    clearTimeout(holdTimeout);
+                    holdTimeout = null;
+                }
+                if (stepInterval) {
+                    clearInterval(stepInterval);
+                    stepInterval = null;
+                }
+            }
+
+            btn.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                stopStepping();
+
+                virtualTargetTime = videoElement.currentTime;
+                stepFrame(1); // Immediate single frame step
+
+                holdStartTime = Date.now();
+
+                // Hold delay: 250ms
+                holdTimeout = setTimeout(() => {
+                    stepInterval = setInterval(() => {
+                        const elapsed = Date.now() - holdStartTime;
+                        let multiplier = 1;
+                        if (elapsed > 2000) {
+                            multiplier = 4; // Fast acceleration
+                        } else if (elapsed > 1000) {
+                            multiplier = 2; // Moderate acceleration
+                        }
+                        stepFrame(multiplier);
+                    }, 60); // 60ms interval (~16 steps/sec)
+                }, 250);
+            });
+
+            btn.addEventListener('pointerup', stopStepping);
+            btn.addEventListener('pointercancel', stopStepping);
+            btn.addEventListener('pointerleave', stopStepping);
+            btn.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
+
+        setupFrameButton(btnFramePrev, -1);
+        setupFrameButton(btnFrameNext, 1);
 
         // Split
         btnSplit.onclick = () => {
             if (segments.length === 0) return;
             const t = videoElement.currentTime;
             const seg = segments[activeSegmentIndex];
-            if (t > seg.start + 0.1 && t < seg.end - 0.1) {
+            if (t > seg.start + 0.05 && t < seg.end - 0.05) {
                 const oldEnd = seg.end;
                 seg.end = t;
                 const newSeg = { start: t, end: oldEnd };
@@ -1307,7 +1469,7 @@
             segments.splice(activeSegmentIndex, 1);
             if (segments.length === 0) {
                 // Must have at least one segment
-                segments.push({start: 0, end: videoElement.duration});
+                segments.push({ start: 0, end: videoElement.duration });
             }
             activeSegmentIndex = Math.max(0, activeSegmentIndex - 1);
             renderTimeline();
@@ -1318,7 +1480,6 @@
         btnPlaySelection.onclick = () => {
             if (isPlaying) {
                 stopPlayback();
-                btnPlaySelection.innerText = "Play Selection";
             } else {
                 if (segments.length === 0) return;
                 const seg = segments[activeSegmentIndex];
@@ -1326,7 +1487,6 @@
                 videoElement.play();
                 isPlaying = true;
                 btnPlaySelection.innerText = "Stop";
-
                 checkLoop();
             }
         };
@@ -1336,7 +1496,6 @@
             const seg = segments[activeSegmentIndex];
             if (videoElement.currentTime >= seg.end) {
                 stopPlayback();
-                btnPlaySelection.innerText = "Play Selection";
                 return;
             }
             playbackLoopId = requestAnimationFrame(checkLoop);
@@ -1352,7 +1511,7 @@
             btnPlaySelection.innerText = "Play Selection";
         }
 
-        // --- END NEW TIMELINE LOGIC ---
+        // --- END TIMELINE LOGIC ---
 zoomSlider.oninput = () => {
             updateCropBoxSize();
             enforceBounds();

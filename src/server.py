@@ -137,8 +137,8 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                 }
 
                 caption_main = form_data.get('caption_main', '').replace('\r\n', '\n').replace('\r', '\n')
-                font_main_key = form_data.get('font_main', 'Calistoga')
-                font_main = str(Path(FONT_REGISTRY.get(font_main_key, "fonts/Calistoga-Regular.ttf")).resolve())
+                font_main_key = form_data.get('font_main', 'Alike')
+                font_main = str(Path(FONT_REGISTRY.get(font_main_key, "fonts/Alike-Regular.ttf")).resolve())
 
                 caption_curiosity = form_data.get('caption_curiosity', '').replace('\r\n', '\n').replace('\r', '\n')
                 font_curiosity_key = form_data.get('font_curiosity', 'Calistoga')
