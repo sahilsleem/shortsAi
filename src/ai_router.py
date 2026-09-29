@@ -293,6 +293,12 @@ cooldown_tracker = ProviderCooldownTracker()
 # Provider Adapters
 # ---------------------------------------------------------------------------
 
+DEFAULT_USER_AGENT = (
+    "ShortsAI/1.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
+
 class BaseAIProvider:
     """Abstract base class for AI provider adapters."""
     name: str = "base"
@@ -306,7 +312,7 @@ class GeminiProvider(BaseAIProvider):
     name = "gemini"
 
     def generate(self, context: str, previous_generations: list = None) -> dict:
-        key = os.environ.get("GEMINI_API_KEY", "").strip()
+        key = os.environ.get("GEMINI_API_KEY", "").strip().strip("\"'")
         if not key:
             raise AIAuthError("GEMINI_API_KEY is not configured.", provider=self.name)
 
@@ -338,6 +344,7 @@ class GeminiProvider(BaseAIProvider):
             data=req_body,
             headers={
                 "Content-Type": "application/json",
+                "User-Agent": DEFAULT_USER_AGENT,
                 "x-goog-api-key": key
             },
             method="POST"
@@ -350,10 +357,20 @@ class GeminiProvider(BaseAIProvider):
         except urllib.error.HTTPError as e:
             err_msg = ""
             try:
-                err_data = json.loads(e.read().decode("utf-8"))
-                err_msg = err_data.get("error", {}).get("message", "")
+                raw_err = e.read().decode("utf-8", errors="replace")
+                try:
+                    err_data = json.loads(raw_err)
+                    if isinstance(err_data, dict):
+                        err_obj = err_data.get("error")
+                        if isinstance(err_obj, dict):
+                            err_msg = err_obj.get("message", "")
+                        elif isinstance(err_obj, str):
+                            err_msg = err_obj
+                except Exception:
+                    clean_err = re.sub(r'<[^>]+>', ' ', raw_err[:300]).strip()
+                    err_msg = clean_err[:120] if clean_err else str(e.reason)
             except Exception:
-                pass
+                err_msg = str(e.reason)
 
             if e.code in (400, 401, 403, 404):
                 if e.code in (400, 403) and ("API_KEY" in err_msg or "key" in err_msg.lower()):
@@ -407,7 +424,9 @@ class OpenAICompatibleProvider(BaseAIProvider):
         env_key_name: str,
         env_model_name: str,
         default_model: str,
-        extra_headers: Optional[Dict[str, str]] = None
+        extra_headers: Optional[Dict[str, str]] = None,
+        extra_payload: Optional[Dict[str, Any]] = None,
+        max_tokens: int = 4096
     ):
         self.name = name
         self.endpoint = endpoint
@@ -415,94 +434,199 @@ class OpenAICompatibleProvider(BaseAIProvider):
         self.env_model_name = env_model_name
         self.default_model = default_model
         self.extra_headers = extra_headers or {}
+        self.extra_payload = extra_payload or {}
+        self.max_tokens = max_tokens
 
     def generate(self, context: str, previous_generations: list = None) -> dict:
-        key = os.environ.get(self.env_key_name, "").strip()
+        key = os.environ.get(self.env_key_name, "").strip().strip("\"'")
         if not key:
             raise AIAuthError(f"{self.env_key_name} is not configured.", provider=self.name)
 
         model = os.environ.get(self.env_model_name, self.default_model).strip()
         user_prompt = build_user_prompt(context, previous_generations)
 
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": MASTER_PUBLISHING_PROMPT},
-                {"role": "user", "content": user_prompt}
-            ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.7,
-            "max_tokens": 2048
-        }
-        req_body = json.dumps(payload).encode("utf-8")
+        def _execute_http(include_json_format: bool) -> dict:
+            payload: Dict[str, Any] = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": MASTER_PUBLISHING_PROMPT},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": self.max_tokens,
+                **self.extra_payload
+            }
+            if include_json_format:
+                payload["response_format"] = {"type": "json_object"}
 
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {key}",
-            **self.extra_headers
-        }
+            req_body = json.dumps(payload).encode("utf-8")
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": DEFAULT_USER_AGENT,
+                "Authorization": f"Bearer {key}",
+                **self.extra_headers
+            }
 
-        req = urllib.request.Request(
-            self.endpoint,
-            data=req_body,
-            headers=headers,
-            method="POST"
-        )
+            req = urllib.request.Request(
+                self.endpoint,
+                data=req_body,
+                headers=headers,
+                method="POST"
+            )
 
-        try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                resp_body = resp.read().decode("utf-8")
-                resp_data = json.loads(resp_body)
-        except urllib.error.HTTPError as e:
-            err_msg = ""
             try:
-                err_data = json.loads(e.read().decode("utf-8"))
-                err_msg = err_data.get("error", {}).get("message", "")
+                with urllib.request.urlopen(req, timeout=25) as resp:
+                    resp_body = resp.read().decode("utf-8")
+                    return json.loads(resp_body)
+            except urllib.error.HTTPError as e:
+                err_msg = ""
+                try:
+                    raw_err = e.read().decode("utf-8", errors="replace")
+                    try:
+                        err_data = json.loads(raw_err)
+                        if isinstance(err_data, dict):
+                            err_obj = err_data.get("error")
+                            if isinstance(err_obj, dict):
+                                err_msg = err_obj.get("message", "")
+                            elif isinstance(err_obj, str):
+                                err_msg = err_obj
+                    except Exception:
+                        clean_err = re.sub(r'<[^>]+>', ' ', raw_err[:300]).strip()
+                        err_msg = clean_err[:120] if clean_err else str(e.reason)
+                except Exception:
+                    err_msg = str(e.reason)
+
+                # If 400 Bad Request indicates json_object response_format is unsupported, signal to retry without it
+                if include_json_format and e.code == 400 and any(kw in err_msg.lower() for kw in ("response_format", "json_object", "schema", "parameter")):
+                    raise ValueError(f"unsupported_response_format: {err_msg}")
+
+                if e.code in (401, 403):
+                    detail = err_msg or ("Forbidden / WAF block" if e.code == 403 else "Unauthorized")
+                    raise AIAuthError(f"{self.name} authentication failed ({e.code}): {detail}", provider=self.name, status_code=e.code)
+
+                if e.code == 429 or "rate_limit" in err_msg.lower() or "quota" in err_msg.lower():
+                    raise AIQuotaError(f"{self.name} rate limit / quota exceeded ({e.code}): {err_msg}", provider=self.name, status_code=429)
+
+                if e.code == 408:
+                    raise AITimeoutError(f"{self.name} timeout ({e.code})", provider=self.name, status_code=408)
+
+                if 500 <= e.code < 600:
+                    raise AITransientError(f"{self.name} server error ({e.code}): {err_msg}", provider=self.name, status_code=e.code)
+
+                if e.code in (400, 404):
+                    if "key" in err_msg.lower() or "auth" in err_msg.lower():
+                        raise AIAuthError(f"{self.name} auth/config error ({e.code}): {err_msg}", provider=self.name, status_code=e.code)
+                    raise AIProviderError(f"{self.name} client error ({e.code}): {err_msg}", provider=self.name, status_code=e.code)
+
+                raise AIProviderError(f"{self.name} HTTP error ({e.code}): {err_msg}", provider=self.name, status_code=e.code)
+
+            except urllib.error.URLError as e:
+                if isinstance(e.reason, socket.timeout) or "timed out" in str(e.reason).lower():
+                    raise AITimeoutError(f"{self.name} network timeout: {e.reason}", provider=self.name)
+                raise AINetworkError(f"{self.name} network error: {e.reason}", provider=self.name)
+            except (TimeoutError, socket.timeout):
+                raise AITimeoutError(f"{self.name} request timed out", provider=self.name)
+            except (AIProviderError, ValueError):
+                raise
+            except Exception as e:
+                raise AIProviderError(f"{self.name} communication error: {str(e)}", provider=self.name)
+
+        def _extract_choice_data(data: dict) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+            """Extracts (content, refusal, finish_reason) from response dictionary."""
+            # Check for top-level error object (common in proxy/aggregator 200 responses)
+            if "error" in data and not data.get("choices"):
+                err = data["error"]
+                err_msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+                code = err.get("code") if isinstance(err, dict) else None
+                if code == 429 or "rate" in err_msg.lower() or "quota" in err_msg.lower():
+                    raise AIQuotaError(f"{self.name} rate limit / quota exceeded: {err_msg}", provider=self.name, status_code=429)
+                if code in (401, 403) or "auth" in err_msg.lower() or "key" in err_msg.lower():
+                    raise AIAuthError(f"{self.name} authentication failed: {err_msg}", provider=self.name, status_code=code or 401)
+                raise AIMalformedResponseError(f"{self.name} API error: {err_msg}", provider=self.name)
+
+            choices = data.get("choices")
+            if not choices or not isinstance(choices, list):
+                return None, None, None
+
+            first_choice = choices[0]
+            if not isinstance(first_choice, dict):
+                return None, None, None
+
+            finish_reason = first_choice.get("finish_reason")
+            message = first_choice.get("message", {})
+            if not isinstance(message, dict):
+                return None, None, finish_reason
+
+            refusal = message.get("refusal")
+            if refusal:
+                return None, str(refusal), finish_reason
+
+            raw_content = message.get("content")
+            extracted = None
+            if isinstance(raw_content, list):
+                # Multipart content list of dicts: [{"type": "text", "text": "..."}]
+                extracted = "".join(
+                    part.get("text", "") if isinstance(part, dict) else str(part)
+                    for part in raw_content
+                )
+            elif isinstance(raw_content, str) and raw_content.strip():
+                extracted = raw_content
+            elif raw_content is None or (isinstance(raw_content, str) and not raw_content.strip()):
+                # Fallback: check reasoning or thought if content was empty
+                reasoning = message.get("reasoning_content") or message.get("reasoning") or message.get("thought")
+                if reasoning and isinstance(reasoning, str) and "{" in reasoning and "}" in reasoning:
+                    extracted = reasoning
+
+            return extracted, None, finish_reason
+
+        # Attempt 1: with response_format: {"type": "json_object"}
+        used_response_format = True
+        try:
+            resp_data = _execute_http(include_json_format=True)
+        except ValueError:
+            # Endpoint explicitly rejected response_format: {"type": "json_object"}
+            used_response_format = False
+            resp_data = _execute_http(include_json_format=False)
+
+        content, refusal, finish_reason = _extract_choice_data(resp_data)
+
+        if refusal:
+            raise AIIncompletePackageError(f"{self.name} model refusal: {refusal}", provider=self.name)
+
+        # Fallback attempt if response_format yielded empty/null content
+        if (content is None or not content.strip()) and used_response_format:
+            try:
+                fallback_data = _execute_http(include_json_format=False)
+                fb_content, fb_refusal, fb_finish = _extract_choice_data(fallback_data)
+                if fb_refusal:
+                    raise AIIncompletePackageError(f"{self.name} model refusal: {fb_refusal}", provider=self.name)
+                if fb_content and fb_content.strip():
+                    content = fb_content
+                else:
+                    finish_reason = fb_finish or finish_reason
             except Exception:
                 pass
 
-            if e.code in (401, 403):
-                raise AIAuthError(f"{self.name} authentication failed ({e.code}): {err_msg}", provider=self.name, status_code=e.code)
-
-            if e.code == 429 or "rate_limit" in err_msg.lower() or "quota" in err_msg.lower():
-                raise AIQuotaError(f"{self.name} rate limit / quota exceeded ({e.code}): {err_msg}", provider=self.name, status_code=429)
-
-            if e.code == 408:
-                raise AITimeoutError(f"{self.name} timeout ({e.code})", provider=self.name, status_code=408)
-
-            if 500 <= e.code < 600:
-                raise AITransientError(f"{self.name} server error ({e.code}): {err_msg}", provider=self.name, status_code=e.code)
-
-            if e.code in (400, 404):
-                if "key" in err_msg.lower() or "auth" in err_msg.lower():
-                    raise AIAuthError(f"{self.name} auth/config error ({e.code}): {err_msg}", provider=self.name, status_code=e.code)
-                raise AIProviderError(f"{self.name} client error ({e.code}): {err_msg}", provider=self.name, status_code=e.code)
-
-            raise AIProviderError(f"{self.name} HTTP error ({e.code}): {err_msg}", provider=self.name, status_code=e.code)
-
-        except urllib.error.URLError as e:
-            if isinstance(e.reason, socket.timeout) or "timed out" in str(e.reason).lower():
-                raise AITimeoutError(f"{self.name} network timeout: {e.reason}", provider=self.name)
-            raise AINetworkError(f"{self.name} network error: {e.reason}", provider=self.name)
-        except (TimeoutError, socket.timeout):
-            raise AITimeoutError(f"{self.name} request timed out", provider=self.name)
-        except Exception as e:
-            raise AIProviderError(f"{self.name} communication error: {str(e)}", provider=self.name)
-
-        choices = resp_data.get("choices", [])
-        if not choices:
-            raise AIMalformedResponseError(f"{self.name} returned no choices", provider=self.name)
-
-        message = choices[0].get("message", {})
-        content = message.get("content", "")
-        if not content:
-            raise AIMalformedResponseError(f"{self.name} returned empty message content", provider=self.name)
+        if not content or not content.strip():
+            reason_suffix = f" (finish_reason: {finish_reason})" if finish_reason else ""
+            raise AIMalformedResponseError(f"{self.name} returned empty message content{reason_suffix}", provider=self.name)
 
         raw_text = clean_json_text(content)
         try:
             data = json.loads(raw_text)
-        except Exception as e:
-            raise AIMalformedResponseError(f"{self.name} content could not be parsed as JSON: {str(e)}", provider=self.name)
+        except Exception:
+            # Fallback regex extraction for outermost JSON object if conversational text surrounds it
+            match = re.search(r"(\{.*\})", raw_text, re.DOTALL)
+            if match:
+                try:
+                    data = json.loads(match.group(1))
+                except Exception as e:
+                    raise AIMalformedResponseError(f"{self.name} content could not be parsed as JSON: {str(e)}", provider=self.name)
+            else:
+                raise AIMalformedResponseError(f"{self.name} content could not be parsed as JSON: invalid format", provider=self.name)
+
+        if not isinstance(data, dict):
+            raise AIMalformedResponseError(f"{self.name} content did not parse into a JSON object", provider=self.name)
 
         return data
 
@@ -515,7 +639,8 @@ class GroqProvider(OpenAICompatibleProvider):
             endpoint="https://api.groq.com/openai/v1/chat/completions",
             env_key_name="GROQ_API_KEY",
             env_model_name="GROQ_MODEL",
-            default_model="llama-3.3-70b-versatile"
+            default_model="llama-3.3-70b-versatile",
+            max_tokens=4096
         )
 
 
@@ -527,7 +652,8 @@ class CerebrasProvider(OpenAICompatibleProvider):
             endpoint="https://api.cerebras.ai/v1/chat/completions",
             env_key_name="CEREBRAS_API_KEY",
             env_model_name="CEREBRAS_MODEL",
-            default_model="llama-3.3-70b"
+            default_model="llama-3.3-70b",
+            max_tokens=4096
         )
 
 
@@ -543,7 +669,13 @@ class OpenRouterProvider(OpenAICompatibleProvider):
             extra_headers={
                 "HTTP-Referer": "https://github.com/sahilsleem/shortsAi",
                 "X-Title": "ShortsAI"
-            }
+            },
+            extra_payload={
+                "provider": {
+                    "require_parameters": True
+                }
+            },
+            max_tokens=4096
         )
 
 

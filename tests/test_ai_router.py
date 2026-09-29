@@ -431,3 +431,405 @@ def test_provider_name_never_trusted_from_api(monkeypatch):
 
     assert result["provider"] == "groq"
     assert result["provider"] != "fake_spoofed_provider"
+
+
+def test_groq_headers_user_agent_and_stripped_quotes(monkeypatch):
+    """Test 19: Groq requests include User-Agent and strip surrounding quotes from GROQ_API_KEY."""
+    from src.ai_router import DEFAULT_USER_AGENT
+    captured_req = None
+
+    valid_pkg = make_valid_package("Groq")
+    resp_bytes = json.dumps({"choices": [{"message": {"content": json.dumps(valid_pkg)}}]}).encode("utf-8")
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    def mock_urlopen(req, timeout=None):
+        nonlocal captured_req
+        captured_req = req
+        return MockHTTPResponse(resp_bytes)
+
+    monkeypatch.setenv("GROQ_API_KEY", '"gsk_live_test_key_123"')
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    pkg = PROVIDER_REGISTRY["groq"].generate("Salman at airport")
+
+    assert pkg["captions"][0]["main_caption"] == valid_pkg["captions"][0]["main_caption"]
+    assert captured_req is not None
+    # User-Agent must be present to prevent Cloudflare 403
+    assert captured_req.headers.get("User-agent") == DEFAULT_USER_AGENT or captured_req.headers.get("User-Agent") == DEFAULT_USER_AGENT
+    # Key must be stripped of quotes
+    assert captured_req.headers.get("Authorization") == "Bearer gsk_live_test_key_123"
+
+
+def test_groq_cloudflare_403_maps_to_auth_error(monkeypatch):
+    """Test 20: Groq 403 error from Cloudflare or endpoint maps cleanly to AIAuthError with status 403."""
+    import urllib.error
+
+    def mock_urlopen(req, timeout=None):
+        fp = io.BytesIO(b"<html><title>Just a moment...</title>Cloudflare 403 Forbidden</html>")
+        raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, fp)
+
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    with pytest.raises(AIAuthError) as exc_info:
+        PROVIDER_REGISTRY["groq"].generate("Salman at airport")
+
+    assert exc_info.value.status_code == 403
+    assert "groq" in str(exc_info.value)
+
+
+def test_openrouter_payload_and_headers(monkeypatch):
+    """Test 21: OpenRouter requests include User-Agent, referer, X-Title, and require_parameters: true."""
+    from src.ai_router import DEFAULT_USER_AGENT
+    captured_req = None
+
+    valid_pkg = make_valid_package("OpenRouter")
+    resp_bytes = json.dumps({"choices": [{"message": {"content": json.dumps(valid_pkg)}}]}).encode("utf-8")
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    def mock_urlopen(req, timeout=None):
+        nonlocal captured_req
+        captured_req = req
+        return MockHTTPResponse(resp_bytes)
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "'sk-or-test-key-456'")
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    pkg = PROVIDER_REGISTRY["openrouter"].generate("Salman at airport")
+
+    assert pkg["captions"][0]["main_caption"] == valid_pkg["captions"][0]["main_caption"]
+    assert captured_req is not None
+    assert captured_req.headers.get("Authorization") == "Bearer sk-or-test-key-456"
+    assert captured_req.headers.get("Http-referer") == "https://github.com/sahilsleem/shortsAi"
+    assert captured_req.headers.get("X-title") == "ShortsAI"
+
+    payload = json.loads(captured_req.data.decode("utf-8"))
+    assert payload.get("provider", {}).get("require_parameters") is True
+    assert payload.get("max_tokens") == 4096
+
+
+def test_openrouter_empty_content_with_reasoning_fallback(monkeypatch):
+    """Test 22: If content is empty/null but reasoning_content contains JSON package, extracts it successfully."""
+    valid_pkg = make_valid_package("Reasoning")
+    resp_bytes = json.dumps({
+        "choices": [{
+            "finish_reason": "stop",
+            "message": {
+                "content": "",
+                "reasoning_content": f"I will now formulate the response:\n{json.dumps(valid_pkg)}"
+            }
+        }]
+    }).encode("utf-8")
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: MockHTTPResponse(resp_bytes))
+
+    pkg = PROVIDER_REGISTRY["openrouter"].generate("Salman at airport")
+    assert pkg["captions"][0]["main_caption"] == valid_pkg["captions"][0]["main_caption"]
+
+
+def test_openrouter_multipart_content_concatenation(monkeypatch):
+    """Test 23: If content is returned as a list of parts, it is joined and parsed."""
+    valid_pkg = make_valid_package("Multipart")
+    json_str = json.dumps(valid_pkg)
+    mid = len(json_str) // 2
+
+    resp_bytes = json.dumps({
+        "choices": [{
+            "message": {
+                "content": [
+                    {"type": "text", "text": json_str[:mid]},
+                    {"type": "text", "text": json_str[mid:]}
+                ]
+            }
+        }]
+    }).encode("utf-8")
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: MockHTTPResponse(resp_bytes))
+
+    pkg = PROVIDER_REGISTRY["openrouter"].generate("Salman at airport")
+    assert pkg["captions"][0]["main_caption"] == valid_pkg["captions"][0]["main_caption"]
+
+
+def test_openrouter_refusal_raises_incomplete_package(monkeypatch):
+    """Test 24: If model returns a refusal, it is raised as AIIncompletePackageError."""
+    resp_bytes = json.dumps({
+        "choices": [{
+            "message": {
+                "content": None,
+                "refusal": "I cannot fulfill this request."
+            }
+        }]
+    }).encode("utf-8")
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: MockHTTPResponse(resp_bytes))
+
+    with pytest.raises(AIIncompletePackageError) as exc_info:
+        PROVIDER_REGISTRY["openrouter"].generate("Salman at airport")
+
+    assert "model refusal" in str(exc_info.value)
+
+
+def test_openrouter_empty_content_retries_without_response_format(monkeypatch):
+    """Test 25: If initial call with response_format returns empty content, retries without response_format."""
+    valid_pkg = make_valid_package("RetryNoFormat")
+    call_count = 0
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    def mock_urlopen(req, timeout=None):
+        nonlocal call_count
+        call_count += 1
+        body = json.loads(req.data.decode("utf-8"))
+        if "response_format" in body:
+            # Model returns empty content when response_format is forced
+            empty_resp = json.dumps({"choices": [{"message": {"content": ""}}]}).encode("utf-8")
+            return MockHTTPResponse(empty_resp)
+        else:
+            # Model succeeds without response_format
+            success_resp = json.dumps({"choices": [{"message": {"content": json.dumps(valid_pkg)}}]}).encode("utf-8")
+            return MockHTTPResponse(success_resp)
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    pkg = PROVIDER_REGISTRY["openrouter"].generate("Salman at airport")
+    assert call_count == 2
+    assert pkg["captions"][0]["main_caption"] == valid_pkg["captions"][0]["main_caption"]
+
+
+def test_openrouter_conversational_preamble_extracted(monkeypatch):
+    """Test 26: Conversational text around JSON is handled by regex fallback."""
+    valid_pkg = make_valid_package("Conversational")
+    noisy_content = f"Here is the requested package:\n```json\n{json.dumps(valid_pkg)}\n```\nHope this helps!"
+    resp_bytes = json.dumps({"choices": [{"message": {"content": noisy_content}}]}).encode("utf-8")
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: MockHTTPResponse(resp_bytes))
+
+    pkg = PROVIDER_REGISTRY["openrouter"].generate("Salman at airport")
+    assert pkg["captions"][0]["main_caption"] == valid_pkg["captions"][0]["main_caption"]
+
+
+def test_openrouter_top_level_error_classified(monkeypatch):
+    """Test 27: OpenRouter 200 OK containing top-level error dict is classified into AIQuotaError or AIAuthError."""
+    rate_limit_resp = json.dumps({"error": {"code": 429, "message": "Rate limit reached"}}).encode("utf-8")
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: MockHTTPResponse(rate_limit_resp))
+
+    with pytest.raises(AIQuotaError) as exc_info:
+        PROVIDER_REGISTRY["openrouter"].generate("Salman at airport")
+
+    assert exc_info.value.status_code == 429
+
+
+def test_phone_diagnostic_scenario_reproduced_and_handled(monkeypatch):
+    """
+    Test 28: Reproduce the exact diagnostic sequence from the real phone:
+    1. Gemini: 429 Quota Exceeded
+    2. Groq: Authentication/Configuration Error
+    3. OpenRouter: Malformed/Empty Content
+    Router tries all 3 in order, skips none, and reports clean AllProvidersFailedError with last error.
+    """
+    mock_gemini = MagicMock(side_effect=AIQuotaError("Gemini quota exhausted (429)", provider="gemini", status_code=429))
+    mock_groq = MagicMock(side_effect=AIAuthError("groq authentication failed (403)", provider="groq", status_code=403))
+    mock_openrouter = MagicMock(side_effect=AIMalformedResponseError("openrouter returned empty message content", provider="openrouter"))
+
+    monkeypatch.setattr(PROVIDER_REGISTRY["gemini"], "generate", mock_gemini)
+    monkeypatch.setattr(PROVIDER_REGISTRY["groq"], "generate", mock_groq)
+    monkeypatch.setattr(PROVIDER_REGISTRY["openrouter"], "generate", mock_openrouter)
+
+    with pytest.raises(AllProvidersFailedError) as exc_info:
+        generate_content_with_fallback("Salman at airport", provider_order=["gemini", "groq", "openrouter"])
+
+    err_str = str(exc_info.value)
+    assert "AI generation is temporarily unavailable" in err_str
+    assert "openrouter returned empty message content" in err_str
+    assert mock_gemini.call_count == 1
+    assert mock_groq.call_count == 1
+    assert mock_openrouter.call_count == 1
+
+
+def test_reasoning_fallback_rejects_rambling_non_json_text(monkeypatch):
+    """Test 29: Reasoning text is never accepted merely because it is non-empty; non-JSON raises AIMalformedResponseError."""
+    rambling_resp = json.dumps({
+        "choices": [{
+            "finish_reason": "stop",
+            "message": {
+                "content": "",
+                "reasoning_content": "I am thinking deeply about Bollywood movies and Salman Khan at the airport..."
+            }
+        }]
+    }).encode("utf-8")
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: MockHTTPResponse(rambling_resp))
+
+    with pytest.raises(AIMalformedResponseError) as exc_info:
+        PROVIDER_REGISTRY["openrouter"].generate("Salman at airport")
+
+    assert "empty message content" in str(exc_info.value)
+
+
+def test_reasoning_fallback_validates_package_and_rejects_incomplete(monkeypatch):
+    """Test 30: Valid JSON extracted from reasoning must still pass complete package validation."""
+    incomplete_pkg = {
+        "captions": [{"main_caption": "Only one caption", "curiosity_caption": "Incomplete"}],
+        "titles": ["Title 1"]
+        # Missing required 10 captions, 10 titles, 3 top titles, etc.
+    }
+    incomplete_reasoning_resp = json.dumps({
+        "choices": [{
+            "finish_reason": "stop",
+            "message": {
+                "content": "",
+                "reasoning_content": f"Here is the partial output:\n{json.dumps(incomplete_pkg)}"
+            }
+        }]
+    }).encode("utf-8")
+
+    valid_groq = make_valid_package("Groq")
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: MockHTTPResponse(incomplete_reasoning_resp))
+    monkeypatch.setattr(PROVIDER_REGISTRY["groq"], "generate", MagicMock(return_value=valid_groq))
+
+    # OpenRouter returns incomplete package in reasoning -> router must reject it and fall back to Groq
+    result = generate_content_with_fallback("Salman at airport", provider_order=["openrouter", "groq"])
+    assert result["provider"] == "groq"
+    assert len(result["captions"]) == 10
+
+
+def test_reasoning_fallback_never_exposes_internal_thoughts(monkeypatch):
+    """Test 31: Normalized package never leaks or exposes raw internal reasoning text."""
+    secret_thoughts = "SECRET_INTERNAL_CHAIN_OF_THOUGHT_DO_NOT_LEAK"
+    valid_pkg = make_valid_package("Safe")
+    resp_bytes = json.dumps({
+        "choices": [{
+            "finish_reason": "stop",
+            "message": {
+                "content": "",
+                "reasoning_content": f"{secret_thoughts}\n```json\n{json.dumps(valid_pkg)}\n```"
+            }
+        }]
+    }).encode("utf-8")
+
+    class MockHTTPResponse:
+        def __init__(self, data):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: MockHTTPResponse(resp_bytes))
+
+    result = generate_content_with_fallback("Salman at airport", provider_order=["openrouter"])
+    assert result["provider"] == "openrouter"
+    # Ensure secret thoughts are nowhere in the output dictionary
+    assert secret_thoughts not in json.dumps(result)
+    assert "reasoning" not in result
+    assert "reasoning_content" not in result
+    assert "thought" not in result
