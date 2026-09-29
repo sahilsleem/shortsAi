@@ -3,6 +3,44 @@ class TimelineState:
         self.duration = duration
         self.segments = [{"start": 0.0, "end": float(duration)}]
         self.active_idx = 0
+        self.zoom_levels = [100, 200, 400, 800, 1600, 3200]
+        self.zoom_level = 100
+        self.scroll_left = 0.0
+
+    def get_track_width(self, viewport_width):
+        return (viewport_width * self.zoom_level) / 100.0
+
+    def get_px_per_sec(self, viewport_width):
+        return self.get_track_width(viewport_width) / self.duration
+
+    def set_zoom(self, zoom_pct, viewport_width, current_time=None):
+        if current_time is None:
+            current_time = self.segments[self.active_idx]["start"]
+        old_track_width = self.get_track_width(viewport_width)
+        old_playhead_px = (current_time / self.duration) * old_track_width
+        old_screen_x = old_playhead_px - self.scroll_left
+        if old_screen_x < 20 or old_screen_x > viewport_width - 20:
+            old_screen_x = viewport_width / 2.0
+
+        self.zoom_level = zoom_pct
+        new_track_width = self.get_track_width(viewport_width)
+        new_playhead_px = (current_time / self.duration) * new_track_width
+        self.scroll_left = max(0.0, min(new_track_width - viewport_width, new_playhead_px - old_screen_x))
+
+    def get_time_markers(self, viewport_width):
+        px_per_sec = self.get_px_per_sec(viewport_width)
+        intervals = [0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0]
+        step = 5.0
+        for intv in intervals:
+            if intv * px_per_sec >= 50.0:
+                step = intv
+                break
+        markers = []
+        t = 0.0
+        while t <= self.duration + 1e-5:
+            markers.append(round(t, 4))
+            t += step
+        return step, markers
 
     def get_active(self):
         return self.segments[self.active_idx]
@@ -399,3 +437,121 @@ def test_legacy_compatibility():
     assert s_start == 3
     assert s_end == 8
     assert cut_time == 5.5
+
+def test_zoom_100_percent_preserves_behavior():
+    """Verify 100% zoom preserves existing timeline behavior and track width matches viewport."""
+    tl = TimelineState(20)
+    viewport_width = 360.0
+    assert tl.zoom_level == 100
+    assert tl.get_track_width(viewport_width) == 360.0
+    assert tl.get_px_per_sec(viewport_width) == 18.0
+
+def test_zoom_factor_changes_track_width():
+    """Verify zoom levels 200%, 400%, 800%, 1600%, 3200% correctly scale track width."""
+    tl = TimelineState(20)
+    viewport_width = 400.0
+
+    tl.set_zoom(200, viewport_width)
+    assert tl.get_track_width(viewport_width) == 800.0
+
+    tl.set_zoom(400, viewport_width)
+    assert tl.get_track_width(viewport_width) == 1600.0
+
+    tl.set_zoom(800, viewport_width)
+    assert tl.get_track_width(viewport_width) == 3200.0
+
+    tl.set_zoom(1600, viewport_width)
+    assert tl.get_track_width(viewport_width) == 6400.0
+
+    tl.set_zoom(3200, viewport_width)
+    assert tl.get_track_width(viewport_width) == 12800.0
+
+def test_fractional_segment_values_survive_zoom():
+    """Verify fractional segment start/end values like 12.37 and 12.71 survive zoom without rounding."""
+    tl = TimelineState(30)
+    tl.segments = [{"start": 12.37, "end": 12.71}]
+    tl.active_idx = 0
+    viewport_width = 360.0
+
+    for zoom in [100, 200, 400, 800, 1600, 3200]:
+        tl.set_zoom(zoom, viewport_width)
+        assert tl.segments[0]["start"] == 12.37
+        assert tl.segments[0]["end"] == 12.71
+        assert round(tl.segments[0]["end"] - tl.segments[0]["start"], 2) == 0.34
+
+def test_zooming_does_not_alter_segment_times():
+    """Verify that repeatedly zooming in and out does not mutate any segment boundaries."""
+    tl = TimelineState(20)
+    tl.segments = [
+        {"start": 1.25, "end": 4.50},
+        {"start": 6.10, "end": 8.75},
+        {"start": 12.333, "end": 15.666}
+    ]
+    viewport_width = 360.0
+    expected = [dict(s) for s in tl.segments]
+
+    for z in [200, 400, 800, 1600, 100, 3200, 100]:
+        tl.set_zoom(z, viewport_width)
+        assert tl.segments == expected
+
+def test_horizontal_scrolling_does_not_alter_segment_times():
+    """Verify that horizontal scrolling does not alter segment times."""
+    tl = TimelineState(20)
+    tl.segments = [{"start": 4.23, "end": 4.71}]
+    viewport_width = 360.0
+    tl.set_zoom(800, viewport_width)
+
+    for scroll in [0.0, 100.0, 500.0, 1200.0]:
+        tl.scroll_left = scroll
+        assert tl.segments[0]["start"] == 4.23
+        assert tl.segments[0]["end"] == 4.71
+
+def test_zoom_centering_on_playhead():
+    """Verify that zooming in centers around the playhead/current editing position."""
+    tl = TimelineState(20)
+    viewport_width = 400.0
+    tl.scroll_left = 0.0
+    playhead_time = 10.0
+
+    # Zoom to 400% (track becomes 1600px)
+    tl.set_zoom(400, viewport_width, current_time=playhead_time)
+
+    # Playhead on track is (10/20) * 1600 = 800px.
+    # With scroll_left, screen position is 800 - scroll_left.
+    screen_pos = (playhead_time / tl.duration) * tl.get_track_width(viewport_width) - tl.scroll_left
+    assert abs(screen_pos - 200.0) < 1.0
+
+def test_ruler_marker_density():
+    """Verify intelligent marker density at different zoom levels so labels never crowd (< 50px)."""
+    tl = TimelineState(20)
+    viewport_width = 360.0
+
+    # 100% zoom (18 px/sec) -> step should be 5s (90px apart >= 50px)
+    tl.set_zoom(100, viewport_width)
+    step_100, markers_100 = tl.get_time_markers(viewport_width)
+    assert step_100 == 5.0
+    assert step_100 * tl.get_px_per_sec(viewport_width) >= 50.0
+
+    # 400% zoom (72 px/sec) -> step should be 1s (72px apart >= 50px)
+    tl.set_zoom(400, viewport_width)
+    step_400, markers_400 = tl.get_time_markers(viewport_width)
+    assert step_400 == 1.0
+    assert step_400 * tl.get_px_per_sec(viewport_width) >= 50.0
+
+    # 1600% zoom (288 px/sec) -> step should be 0.2s (57.6px apart >= 50px)
+    tl.set_zoom(1600, viewport_width)
+    step_1600, markers_1600 = tl.get_time_markers(viewport_width)
+    assert step_1600 == 0.2
+    assert step_1600 * tl.get_px_per_sec(viewport_width) >= 50.0
+
+def test_split_fractional_time():
+    """Verify split still works at fractional times like 7.34s."""
+    tl = TimelineState(20)
+    tl.segments = [{"start": 5.0, "end": 10.0}]
+    tl.active_idx = 0
+    tl.split(7.34)
+    assert len(tl.segments) == 2
+    assert tl.segments[0]["start"] == 5.0
+    assert tl.segments[0]["end"] == 7.34
+    assert tl.segments[1]["start"] == 7.34
+    assert tl.segments[1]["end"] == 10.0

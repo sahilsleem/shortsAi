@@ -348,28 +348,47 @@
                 </div>
 
                                 <div class="timeline-controls" style="margin-top: 16px;">
-                    <!-- New Trim / Clip Timeline -->
-                    <div id="trim-timeline-container" style="position: relative; width: 100%; height: 50px; background: #1e293b; border-radius: 6px; overflow: hidden; touch-action: none; user-select: none;">
-                        <!-- Filmstrip background -->
-                        <div id="filmstrip" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; opacity: 0.8;"></div>
-                        <!-- Dim overlays for excluded regions -->
-                        <div id="dim-overlays"></div>
-                        <!-- Segments -->
-                        <div id="segments-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></div>
-                        <!-- Active Segment Handles with 36px touch targets and compact visual pill -->
-                        <div id="handle-in" style="position: absolute; top: 0; bottom: 0; width: 36px; cursor: ew-resize; pointer-events: auto; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; z-index: 15; touch-action: none; user-select: none;">
-                            <div style="width: 12px; height: calc(100% - 6px); background: #ffffff; border: 1.5px solid #475569; border-radius: 4px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.35); box-sizing: border-box;">
-                                <div style="width: 2px; height: 14px; background: #475569; border-radius: 1px;"></div>
-                            </div>
+                    <!-- Compact Zoom Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Timeline Zoom</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <button type="button" id="btn-zoom-out" class="btn" style="width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px;" disabled>−</button>
+                            <span id="zoom-level-label" style="font-size: 12px; font-weight: 700; color: #4338ca; min-width: 44px; text-align: center;">100%</span>
+                            <button type="button" id="btn-zoom-in" class="btn" style="width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px;">+</button>
                         </div>
-                        <div id="handle-out" style="position: absolute; top: 0; bottom: 0; width: 36px; cursor: ew-resize; pointer-events: auto; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; z-index: 15; touch-action: none; user-select: none;">
-                            <div style="width: 12px; height: calc(100% - 6px); background: #ffffff; border: 1.5px solid #475569; border-radius: 4px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.35); box-sizing: border-box;">
-                                <div style="width: 2px; height: 14px; background: #475569; border-radius: 1px;"></div>
+                    </div>
+
+                    <!-- Timeline Scrollable Viewport -->
+                    <div id="timeline-scroll-viewport" style="position: relative; width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; border-radius: 6px; background: #1e293b; scrollbar-width: thin;">
+                        <!-- Timeline Track (expands with zoom factor) -->
+                        <div id="timeline-track" style="position: relative; min-width: 100%; width: 100%; touch-action: pan-x; user-select: none;">
+                            <!-- Time Ruler -->
+                            <div id="time-ruler" style="position: relative; width: 100%; height: 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); pointer-events: none; overflow: hidden;"></div>
+
+                            <!-- Trim Timeline Container -->
+                            <div id="trim-timeline-container" style="position: relative; width: 100%; height: 50px; overflow: hidden; touch-action: pan-x; user-select: none;">
+                                <!-- Filmstrip background -->
+                                <div id="filmstrip" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; opacity: 0.8;"></div>
+                                <!-- Dim overlays for excluded regions -->
+                                <div id="dim-overlays"></div>
+                                <!-- Segments -->
+                                <div id="segments-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></div>
+                                <!-- Active Segment Handles with 36px touch targets and compact visual pill -->
+                                <div id="handle-in" style="position: absolute; top: 0; bottom: 0; width: 36px; cursor: ew-resize; pointer-events: auto; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; z-index: 15; touch-action: none; user-select: none;">
+                                    <div style="width: 12px; height: calc(100% - 6px); background: #ffffff; border: 1.5px solid #475569; border-radius: 4px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.35); box-sizing: border-box;">
+                                        <div style="width: 2px; height: 14px; background: #475569; border-radius: 1px;"></div>
+                                    </div>
+                                </div>
+                                <div id="handle-out" style="position: absolute; top: 0; bottom: 0; width: 36px; cursor: ew-resize; pointer-events: auto; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; z-index: 15; touch-action: none; user-select: none;">
+                                    <div style="width: 12px; height: calc(100% - 6px); background: #ffffff; border: 1.5px solid #475569; border-radius: 4px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.35); box-sizing: border-box;">
+                                        <div style="width: 2px; height: 14px; background: #475569; border-radius: 1px;"></div>
+                                    </div>
+                                </div>
+                                <!-- Playhead -->
+                                <div id="playhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; pointer-events: none; z-index: 10; transform: translateX(-50%);">
+                                    <div style="position: absolute; top: -2px; left: -4px; width: 10px; height: 10px; background: #ef4444; border-radius: 50%;"></div>
+                                </div>
                             </div>
-                        </div>
-                        <!-- Playhead -->
-                        <div id="playhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; pointer-events: none; z-index: 10; transform: translateX(-50%);">
-                            <div style="position: absolute; top: -2px; left: -4px; width: 10px; height: 10px; background: #ef4444; border-radius: 50%;"></div>
                         </div>
                     </div>
 
@@ -557,10 +576,16 @@
         const zoomSlider = document.getElementById('zoom-slider');
         // Timeline references
         const timelineContainer = document.getElementById('trim-timeline-container');
+        const timelineScrollViewport = document.getElementById('timeline-scroll-viewport');
+        const timelineTrack = document.getElementById('timeline-track');
+        const timeRuler = document.getElementById('time-ruler');
         const filmstrip = document.getElementById('filmstrip');
         const dimOverlays = document.getElementById('dim-overlays');
         const segmentsContainer = document.getElementById('segments-container');
         const playhead = document.getElementById('playhead');
+        const btnZoomOut = document.getElementById('btn-zoom-out');
+        const btnZoomIn = document.getElementById('btn-zoom-in');
+        const zoomLevelLabel = document.getElementById('zoom-level-label');
         const btnFramePrev = document.getElementById('btn-frame-prev');
         const btnPlaySelection = document.getElementById('btn-play-selection');
         const btnFrameNext = document.getElementById('btn-frame-next');
@@ -1017,11 +1042,16 @@
             videoElement.onloadedmetadata = () => {
                 const dur = videoElement.duration;
 
+                // Reset timeline zoom to 100% on upload
+                currentZoomIndex = 0;
+                applyZoom(false);
+
                 // Initialize timeline
                 segments = [{ start: 0, end: dur }];
                 activeSegmentIndex = 0;
                 generateFilmstrip();
                 renderTimeline();
+                renderTimeRuler();
 
                 videoElement.currentTime = dur / 2;
 
@@ -1080,9 +1110,121 @@
         }
 
 
-        // --- TIMELINE LOGIC WITH REFINED TOUCH & FRAME CONTROLS ---
+        // --- TIMELINE LOGIC WITH REFINED TOUCH, ZOOM & FRAME CONTROLS ---
         let segments = [];
         let activeSegmentIndex = 0;
+
+        // Timeline Zoom System
+        const ZOOM_LEVELS = [100, 200, 400, 800, 1600, 3200];
+        let currentZoomIndex = 0; // 100% default
+
+        function applyZoom(preservePlayhead = true) {
+            const zoomPct = ZOOM_LEVELS[currentZoomIndex];
+            if (zoomLevelLabel) zoomLevelLabel.innerText = zoomPct + '%';
+            if (btnZoomOut) btnZoomOut.disabled = (currentZoomIndex === 0);
+            if (btnZoomIn) btnZoomIn.disabled = (currentZoomIndex === ZOOM_LEVELS.length - 1);
+
+            const viewport = timelineScrollViewport;
+            const track = timelineTrack;
+            if (!viewport || !track) return;
+
+            let curTimeFraction = 0;
+            let oldScreenX = viewport.clientWidth / 2;
+            if (preservePlayhead && videoElement.duration) {
+                const curTime = videoElement.currentTime || (segments[activeSegmentIndex] ? segments[activeSegmentIndex].start : 0);
+                curTimeFraction = Math.max(0, Math.min(1, curTime / videoElement.duration));
+                const oldTrackWidth = track.getBoundingClientRect().width;
+                if (oldTrackWidth > 0) {
+                    const oldPlayheadPx = curTimeFraction * oldTrackWidth;
+                    oldScreenX = oldPlayheadPx - viewport.scrollLeft;
+                    if (oldScreenX < 20 || oldScreenX > viewport.clientWidth - 20) {
+                        oldScreenX = viewport.clientWidth / 2;
+                    }
+                }
+            }
+
+            track.style.width = zoomPct + '%';
+
+            renderTimeline();
+            renderTimeRuler();
+
+            if (preservePlayhead && videoElement.duration) {
+                const newTrackWidth = (viewport.clientWidth * zoomPct) / 100;
+                const newPlayheadPx = curTimeFraction * newTrackWidth;
+                const targetScrollLeft = Math.max(0, Math.min(newTrackWidth - viewport.clientWidth, newPlayheadPx - oldScreenX));
+                viewport.scrollLeft = targetScrollLeft;
+            } else {
+                viewport.scrollLeft = 0;
+            }
+        }
+
+        if (btnZoomIn) {
+            btnZoomIn.onclick = () => {
+                if (currentZoomIndex < ZOOM_LEVELS.length - 1) {
+                    currentZoomIndex++;
+                    applyZoom(true);
+                }
+            };
+        }
+
+        if (btnZoomOut) {
+            btnZoomOut.onclick = () => {
+                if (currentZoomIndex > 0) {
+                    currentZoomIndex--;
+                    applyZoom(true);
+                }
+            };
+        }
+
+        function renderTimeRuler() {
+            if (!timeRuler || !videoElement.duration) return;
+            const dur = videoElement.duration;
+            const track = timelineTrack;
+            const viewport = timelineScrollViewport;
+            if (!track || !viewport) return;
+
+            const zoomPct = ZOOM_LEVELS[currentZoomIndex];
+            const trackWidth = (viewport.clientWidth * zoomPct) / 100;
+            if (trackWidth <= 0) return;
+            const pxPerSec = trackWidth / dur;
+
+            const intervals = [0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0];
+            let step = 5.0;
+            for (const intv of intervals) {
+                if (intv * pxPerSec >= 50) {
+                    step = intv;
+                    break;
+                }
+            }
+
+            let html = '';
+            for (let t = 0; t <= dur + 1e-5; t += step) {
+                const pct = (t / dur) * 100;
+                let label = '';
+                if (step < 0.1) {
+                    label = t.toFixed(2) + 's';
+                } else if (step < 1.0) {
+                    label = t.toFixed(1) + 's';
+                } else if (step < 60) {
+                    label = Math.round(t) + 's';
+                } else {
+                    const m = Math.floor(t / 60);
+                    const s = Math.floor(t % 60);
+                    label = `${m}:${s.toString().padStart(2, '0')}`;
+                }
+                html += `<div style="position: absolute; left: ${pct}%; top: 0; bottom: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; pointer-events: none;">
+                    <span style="font-size: 9px; font-weight: 600; color: #94a3b8; line-height: 10px; margin-top: 2px;">${label}</span>
+                    <div style="width: 1px; height: 4px; background: rgba(255, 255, 255, 0.3); margin-top: auto;"></div>
+                </div>`;
+            }
+            timeRuler.innerHTML = html;
+        }
+
+        window.addEventListener('resize', () => {
+            if (videoElement.duration) {
+                renderTimeRuler();
+            }
+        });
 
         function generateFilmstrip() {
             filmstrip.innerHTML = '';
@@ -1297,6 +1439,16 @@
             pct = Math.max(0, Math.min(1, pct));
             const t = pct * videoElement.duration;
 
+            // Auto-scroll when dragging near viewport edges
+            if (timelineScrollViewport) {
+                const vpRect = timelineScrollViewport.getBoundingClientRect();
+                if (cx < vpRect.left + 35) {
+                    timelineScrollViewport.scrollLeft -= 10;
+                } else if (cx > vpRect.right - 35) {
+                    timelineScrollViewport.scrollLeft += 10;
+                }
+            }
+
             const seg = segments[activeSegmentIndex];
             if (!seg) return;
 
@@ -1380,6 +1532,16 @@
             if (!videoElement.duration) return;
             const pct = (time / videoElement.duration) * 100;
             playhead.style.left = pct + '%';
+
+            if (isPlaying && timelineScrollViewport && timelineTrack) {
+                const trackWidth = timelineTrack.getBoundingClientRect().width;
+                const playheadPx = (time / videoElement.duration) * trackWidth;
+                if (playheadPx > timelineScrollViewport.scrollLeft + timelineScrollViewport.clientWidth - 40) {
+                    timelineScrollViewport.scrollLeft = playheadPx - 40;
+                } else if (playheadPx < timelineScrollViewport.scrollLeft) {
+                    timelineScrollViewport.scrollLeft = Math.max(0, playheadPx - 20);
+                }
+            }
         }
 
         videoElement.addEventListener('timeupdate', () => {
