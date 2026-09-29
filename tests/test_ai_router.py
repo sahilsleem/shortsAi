@@ -1523,3 +1523,55 @@ def test_index_html_js_syntax_check():
     # We specifically look for the broken string pattern that caused the regression
     assert 'initialDesc = currentSelectedTitle + (initialDesc ? "\\\\n\\\\n" + initialDesc : "");' in html
     assert 'initialDesc ? "\\n\\n"' not in html
+
+def test_title_repair_logic():
+    """Test title repair safely truncates text while preserving hashtags and #shorts."""
+    from src.ai_router import repair_long_title
+
+    # 1. 94 character title gets repaired
+    long_t = "Salman Khan Shocked Everyone When He Did This Crazy Thing Right Now! 😳 #shorts #Salman #Bollywood #Viral #Fans"
+    assert len(long_t) > 89
+    rep = repair_long_title(long_t)
+    assert len(rep) <= 89
+    assert "#shorts" in rep.lower()
+    assert rep.count("#") >= 4
+    assert "Salman Khan Shocked" in rep # preserved meaning
+
+    # 2. Already <= 89 is unchanged
+    short_t = "Salman Khan Moment #1 Shocked #Everyone #shorts #airport #fans"
+    assert len(short_t) <= 89
+    assert repair_long_title(short_t) == short_t
+
+def test_package_repair_success():
+    """Test that a package with a repairable long title is accepted and mutated in place."""
+    from src.ai_router import validate_content_package
+    pkg = make_valid_package()
+
+    # Insert a 94-character title
+    long_t = "Salman Khan Shocked Everyone When He Did This Crazy Thing Right Now! 😳 #shorts #Salman #Bollywood #Viral #Fans"
+    pkg["titles"][3] = long_t
+    pkg["top_titles"][0] = long_t
+
+    # Also fix description
+    parts = pkg["description"].split("\\n\\n", 1)
+    if len(parts) > 1:
+        pkg["description"] = long_t + "\\n\\n" + parts[1]
+
+    is_valid, msg = validate_content_package(pkg)
+    assert is_valid
+    assert len(pkg["titles"][3]) <= 89
+    assert len(pkg["top_titles"][0]) <= 89
+    assert pkg["description"].startswith(pkg["top_titles"][0])
+
+def test_package_repair_failure():
+    """Test that an unrepairable title (no #shorts) still fails."""
+    from src.ai_router import validate_content_package
+    pkg = make_valid_package()
+
+    # Title without #shorts that is too long
+    long_t = "Salman Khan Shocked Everyone When He Did This Crazy Thing Right Now! 😳 #Salman #Bollywood #Viral #Fans"
+    pkg["titles"][3] = long_t
+
+    is_valid, msg = validate_content_package(pkg)
+    assert not is_valid
+    assert "missing #shorts" in msg

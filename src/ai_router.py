@@ -307,6 +307,64 @@ def build_user_prompt(context: str, previous_generations: list = None) -> str:
 # Strict Package Validation & Normalization
 # ---------------------------------------------------------------------------
 
+def repair_long_title(title: str) -> str:
+    """Attempts to shorten a title to <= 89 chars while preserving #shorts and 4 hashtags."""
+    if len(title) <= 89:
+        return title
+
+    parts = title.split()
+
+    # Count hashtags
+    hashtags = [p for p in parts if p.startswith("#")]
+    text_parts = [p for p in parts if not p.startswith("#")]
+
+    # We want to keep #shorts and the first few other hashtags
+    required = []
+    for h in hashtags:
+        if h.lower() == "#shorts":
+            required.append(h)
+            break
+
+    # If #shorts is missing entirely, we can't repair it to be valid anyway
+    if not required:
+        return title
+
+    other_hashtags = [h for h in hashtags if h.lower() != "#shorts"]
+
+    # Keep exactly enough to make 4 hashtags total
+    needed = max(0, 4 - len(required))
+    final_hashtags = required + other_hashtags[:needed]
+
+    # Reassemble and check length
+    new_title = " ".join(text_parts + final_hashtags)
+    if len(new_title) <= 89:
+        return new_title
+
+    # If it's STILL too long, shorten the text portion.
+    hashtag_len = sum(len(h) for h in final_hashtags) + len(final_hashtags)
+    available_chars_for_text = 89 - hashtag_len
+
+    if available_chars_for_text < 10:
+        return title
+
+    # Try to trim punctuation at the end of the text
+    text_str = " ".join(text_parts)
+    text_str = text_str.rstrip("!?. ")
+
+    if len(text_str) + hashtag_len <= 89:
+        return text_str + " " + " ".join(final_hashtags)
+
+    # Shorten words from text
+    while len(text_str) + hashtag_len > 89 and " " in text_str:
+        text_str = text_str.rsplit(" ", 1)[0]
+        text_str = text_str.rstrip("!?,. ")
+
+    if len(text_str) + hashtag_len <= 89 and len(text_str) > 10:
+        return text_str + " " + " ".join(final_hashtags)
+
+    return title
+
+
 def validate_content_package(package: dict) -> Tuple[bool, str]:
     """
     Validates that the returned package contains the complete Publishing Package:
@@ -392,6 +450,13 @@ def validate_content_package(package: dict) -> Tuple[bool, str]:
     for idx, title in enumerate(titles):
         if not isinstance(title, str) or not title.strip():
             return False, f"Title #{idx+1} is empty or not a string"
+
+        if len(title) > 89:
+            # Safely attempt to repair the title before rejecting
+            repaired = repair_long_title(title)
+            titles[idx] = repaired
+            title = repaired
+
         t_lower = title.lower()
         if "#shorts" not in t_lower:
             return False, f"Title #{idx+1} is missing #shorts"
@@ -406,16 +471,30 @@ def validate_content_package(package: dict) -> Tuple[bool, str]:
         return False, "Missing or invalid 'top_titles' list"
     if len(top_titles) != 3:
         return False, f"Expected exactly 3 top_titles, got {len(top_titles)}"
+
+    original_first_top_title = str(top_titles[0]) if len(top_titles) > 0 else ""
+
     for idx, top_title in enumerate(top_titles):
         if not isinstance(top_title, str) or not top_title.strip():
             return False, f"Top title #{idx+1} is empty or not a string"
+
+        if len(top_title) > 89:
+            repaired = repair_long_title(top_title)
+            top_titles[idx] = repaired
 
     # 4. Description: non-empty string
     desc = str(package.get("description", "")).strip()
     if not desc:
         return False, "Missing or empty 'description'"
-    if top_titles and not desc.startswith(top_titles[0]):
-        return False, "Description does not start exactly with the first top_title"
+
+    if top_titles:
+        # Check if we need to repair the description prefix because top_titles[0] was repaired
+        if desc.startswith(original_first_top_title) and original_first_top_title != top_titles[0]:
+            desc = top_titles[0] + desc[len(original_first_top_title):]
+            package["description"] = desc
+
+        if not desc.startswith(top_titles[0]):
+            return False, "Description does not start exactly with the first top_title"
     if "📌 CREDITS:" not in desc:
         return False, "Description is missing the exact credit block"
     if "#shorts" not in desc.lower():
