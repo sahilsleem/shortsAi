@@ -570,3 +570,44 @@ def test_split_fractional_time():
     assert tl.segments[0]["end"] == 7.34
     assert tl.segments[1]["start"] == 7.34
     assert tl.segments[1]["end"] == 10.0
+
+def test_mobile_creator_redesign_structure():
+    """Verify the redesigned mobile creator layout contracts: light theme, dark workspace, drawers, quick tools."""
+    from pathlib import Path
+    html = Path("static/index.html").read_text(encoding="utf-8")
+
+    # 1. Dark editor workspace encapsulating preview and timeline
+    assert 'class="editor-workspace"' in html
+    assert 'id="preview-container"' in html
+    assert 'id="crop-box"' in html
+    assert 'id="zoom-slider"' in html
+    assert 'id="timeline-scroll-viewport"' in html
+    assert 'id="trim-timeline-container"' in html
+    assert 'id="handle-in"' in html
+    assert 'id="handle-out"' in html
+
+    # 2. Quick editing controls
+    assert 'id="btn-frame-prev"' in html
+    assert 'id="btn-play-selection"' in html
+    assert 'id="btn-frame-next"' in html
+    assert 'id="btn-split"' in html
+    assert 'id="btn-delete-segment"' in html
+
+    # 3. Compact Tool Drawers
+    assert 'id="drawer-captions"' in html
+    assert 'id="drawer-ai-writer"' in html
+    assert 'id="drawer-enhance"' in html
+    assert 'id="drawer-audio"' in html
+    assert 'id="drawer-branding"' in html
+    assert 'toggleDrawer' in html
+
+    # 4. Captions drawer open by default, others closed by default
+    assert 'class="drawer open" id="drawer-captions"' in html
+    assert 'class="drawer" id="drawer-ai-writer"' in html
+
+    # 5. Prominent Render CTA and result section
+    assert 'id="btn-generate"' in html
+    assert 'id="status-message"' in html
+    assert 'id="result-section"' in html
+    assert 'id="result-video"' in html
+    assert 'id="publishing-section"' in html
