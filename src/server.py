@@ -13,7 +13,11 @@ from email import message_from_bytes
 from src.config import CaptionData
 from src.image_ops import generate_text_overlay, compute_best_font_size
 from src.video_ops import render_main_video, render_curiosity_video, get_ffprobe_path, append_cover_frame
-from src.gemini_caption import generate_captions, GeminiError, GeminiConfigError, GeminiQuotaError, GeminiAPIError
+from src.gemini_caption import GeminiError, GeminiConfigError, GeminiQuotaError, GeminiAPIError
+from src.ai_router import generate_content_with_fallback, AllProvidersFailedError
+
+def generate_captions(context: str, previous_generations: list = None) -> dict:
+    return generate_content_with_fallback(context=context, previous_generations=previous_generations)
 
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024
 
@@ -294,6 +298,11 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     self.send_header('Content-Type', 'application/json')
                     self.end_headers()
                     self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+                except AllProvidersFailedError as e:
+                    self.send_response(503)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "AI generation is temporarily unavailable. Please try again in a moment."}).encode('utf-8'))
                 except Exception as e:
                     self.send_response(500)
                     self.send_header('Content-Type', 'application/json')

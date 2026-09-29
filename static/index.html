@@ -361,11 +361,13 @@
                 
                 <button type="button" class="btn" id="btn-gemini-generate" style="background: #4f46e5; padding: 12px; font-size: 14px;">✨ Generate</button>
                 <div id="gemini-error" style="display: none; color: #dc2626; font-size: 13px; font-weight: 500; margin-top: 10px; line-height: 1.4;"></div>
-                
                 <div id="gemini-result-card" style="display: none; margin-top: 16px; padding: 14px; background: #ffffff; border: 1px solid #e0e7ff; border-radius: 12px; box-shadow: var(--shadow-sm);">
-                    <div style="margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                         <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Main Caption</div>
-                        <div id="gemini-preview-main" style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-top: 3px; line-height: 1.4;"></div>
+                        <div id="gemini-provider-badge" style="font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: none;"></div>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <div id="gemini-preview-main" style="font-size: 14px; font-weight: 600; color: var(--text-main); line-height: 1.4;"></div>
                     </div>
                     <div style="margin-bottom: 14px;">
                         <div style="font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.5px;">Curiosity Caption</div>
@@ -594,6 +596,17 @@
 
                 geminiPreviewMain.innerText = data.main_caption;
                 geminiPreviewCuriosity.innerText = data.curiosity_caption;
+
+                const providerBadge = document.getElementById('gemini-provider-badge');
+                if (providerBadge) {
+                    if (data.provider) {
+                        const pName = data.provider.charAt(0).toUpperCase() + data.provider.slice(1);
+                        providerBadge.innerText = `via ${pName}`;
+                    } else {
+                        providerBadge.innerText = '';
+                    }
+                }
+
                 if (data.thumbnail_phrase) {
                     geminiPreviewThumbnail.innerText = data.thumbnail_phrase;
                     geminiPreviewThumbnailContainer.style.display = "block";
@@ -602,7 +615,7 @@
                 }
                 geminiResultCard.style.display = "block";
             } catch (err) {
-                geminiError.innerText = err.message || "Error generating captions.";
+                geminiError.innerText = err.message || "AI generation is temporarily unavailable. Please try again in a moment.";
                 geminiError.style.display = "block";
             } finally {
                 btnGeminiGenerate.disabled = false;

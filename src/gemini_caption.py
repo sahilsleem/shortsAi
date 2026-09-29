@@ -195,8 +195,8 @@ def parse_gemini_response(response_text: str) -> dict:
 
     return result
 
-def build_gemini_payload(context: str, previous_generations: list = None) -> dict:
-    """Construct Gemini API request payload with context and retry avoidance list."""
+def build_user_prompt(context: str, previous_generations: list = None) -> str:
+    """Construct user context prompt with retry avoidance list if present."""
     prompt_parts = [
         f"Creator's Video Context:\n{context.strip()}"
     ]
@@ -220,7 +220,11 @@ def build_gemini_payload(context: str, previous_generations: list = None) -> dic
                 + "\n".join(avoidance_list)
             )
 
-    full_user_prompt = "\n\n".join(prompt_parts)
+    return "\n\n".join(prompt_parts)
+
+def build_gemini_payload(context: str, previous_generations: list = None) -> dict:
+    """Construct Gemini API request payload with context and retry avoidance list."""
+    full_user_prompt = build_user_prompt(context, previous_generations)
 
     return {
         "contents": [
