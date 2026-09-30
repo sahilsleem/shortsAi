@@ -458,6 +458,17 @@
                         <video id="video-element" playsinline></video>
                         <div id="crop-box"></div>
                     </div>
+                    <!-- Text Composition Preview Overlay -->
+                    <div id="composition-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 19.5%;">
+                        <!-- Main Composition -->
+                        <div id="comp-preview-main" style="position: relative; pointer-events: auto; cursor: grab; padding: 8px; border: 1px dashed rgba(255,255,255,0.3); border-radius: 8px; color: white; text-align: center; font-family: sans-serif; font-weight: bold; text-shadow: 1px 1px 3px black, -1px -1px 3px black, 1px -1px 3px black, -1px 1px 3px black; transition: transform 0.1s; user-select: none;">
+                            <div id="comp-text-main" style="line-height: 1.2;"></div>
+                        </div>
+                        <!-- Curiosity Composition -->
+                        <div id="comp-preview-curiosity" style="position: relative; pointer-events: auto; cursor: grab; padding: 8px; border: 1px dashed rgba(255,0,0,0.3); border-radius: 8px; color: #ef4444; text-align: center; font-family: sans-serif; font-weight: bold; text-shadow: 1px 1px 3px black, -1px -1px 3px black, 1px -1px 3px black, -1px 1px 3px black; transition: transform 0.1s; user-select: none; margin-top: 10px; display: none;">
+                            <div id="comp-text-curiosity" style="line-height: 1.2;"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="crop-slider-bar">
@@ -554,6 +565,16 @@
                                 <input type="text" id="caption-emoji-main" style="height: 36px; text-align: center; font-size: 15px;">
                             </div>
                         </div>
+                        <div class="caption-sub-row" style="margin-top: 8px;">
+                            <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px;">
+                                <span class="sub-label" style="margin: 0 0 0 4px;">Text Size</span>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <button type="button" class="btn" id="btn-main-size-dec" style="width: 28px; height: 28px; padding: 0; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">−</button>
+                                    <span id="main-size-label" style="font-size: 12px; font-weight: 600; width: 36px; text-align: center;">100%</span>
+                                    <button type="button" class="btn" id="btn-main-size-inc" style="width: 28px; height: 28px; padding: 0; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">+</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div id="curiosity-fields">
@@ -577,6 +598,16 @@
                                 <div style="flex: 1;">
                                     <span class="sub-label">Emoji <span class="optional-tag">Opt</span></span>
                                     <input type="text" id="caption-emoji-curiosity" style="height: 36px; text-align: center; font-size: 15px;">
+                                </div>
+                            </div>
+                            <div class="caption-sub-row" style="margin-top: 8px;">
+                                <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px;">
+                                    <span class="sub-label" style="margin: 0 0 0 4px;">Text Size</span>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <button type="button" class="btn" id="btn-curiosity-size-dec" style="width: 28px; height: 28px; padding: 0; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">−</button>
+                                        <span id="curiosity-size-label" style="font-size: 12px; font-weight: 600; width: 36px; text-align: center;">100%</span>
+                                        <button type="button" class="btn" id="btn-curiosity-size-inc" style="width: 28px; height: 28px; padding: 0; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;">+</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -765,19 +796,117 @@
         }
 
         let currentMode = 'curiosity';
+
+        // Text Composition State
+        let mainCompScale = 1.0;
+        let mainCompOffsetX = 0;
+        let mainCompOffsetY = 0;
+        let curiosityCompScale = 1.0;
+        let curiosityCompOffsetX = 0;
+        let curiosityCompOffsetY = 0;
+
+        const compPreviewMain = document.getElementById('comp-preview-main');
+        const compTextMain = document.getElementById('comp-text-main');
+        const compPreviewCuriosity = document.getElementById('comp-preview-curiosity');
+        const compTextCuriosity = document.getElementById('comp-text-curiosity');
+
+        function updateCompositionPreview() {
+            const mainText = document.getElementById('caption-main').value;
+            const mainEmoji = document.getElementById('caption-emoji-main').value;
+            const curText = document.getElementById('caption-curiosity').value;
+            const curEmoji = document.getElementById('caption-emoji-curiosity').value;
+
+            compTextMain.innerText = mainText + (mainEmoji ? ' ' + mainEmoji : '');
+            compTextCuriosity.innerText = curText + (curEmoji ? ' ' + curEmoji : '');
+
+            compPreviewMain.style.transform = `translate(${mainCompOffsetX}px, ${mainCompOffsetY}px) scale(${mainCompScale})`;
+            compPreviewCuriosity.style.transform = `translate(${curiosityCompOffsetX}px, ${curiosityCompOffsetY}px) scale(${curiosityCompScale})`;
+
+            if (currentMode === 'curiosity') {
+                compPreviewCuriosity.style.display = 'block';
+            } else {
+                compPreviewCuriosity.style.display = 'none';
+            }
+        }
+
+        ['caption-main', 'caption-emoji-main', 'caption-curiosity', 'caption-emoji-curiosity'].forEach(id => {
+            const el = document.getElementById(id);
+            if(el) {
+                el.addEventListener('input', updateCompositionPreview);
+            }
+        });
+
+        document.getElementById('btn-main-size-dec').onclick = () => { mainCompScale = Math.max(0.6, mainCompScale - 0.1); document.getElementById('main-size-label').innerText = Math.round(mainCompScale * 100) + '%'; updateCompositionPreview(); };
+        document.getElementById('btn-main-size-inc').onclick = () => { mainCompScale = Math.min(1.4, mainCompScale + 0.1); document.getElementById('main-size-label').innerText = Math.round(mainCompScale * 100) + '%'; updateCompositionPreview(); };
+        document.getElementById('btn-curiosity-size-dec').onclick = () => { curiosityCompScale = Math.max(0.6, curiosityCompScale - 0.1); document.getElementById('curiosity-size-label').innerText = Math.round(curiosityCompScale * 100) + '%'; updateCompositionPreview(); };
+        document.getElementById('btn-curiosity-size-inc').onclick = () => { curiosityCompScale = Math.min(1.4, curiosityCompScale + 0.1); document.getElementById('curiosity-size-label').innerText = Math.round(curiosityCompScale * 100) + '%'; updateCompositionPreview(); };
+
+        function makeDraggable(el, isMain) {
+            let isDragging = false;
+            let startX, startY;
+            let initOffsetX, initOffsetY;
+
+            el.addEventListener('mousedown', startDrag);
+            el.addEventListener('touchstart', startDrag, {passive: false});
+
+            function startDrag(e) {
+                if(e.type === 'touchstart') e.preventDefault();
+                isDragging = true;
+                startX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+                startY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
+                initOffsetX = isMain ? mainCompOffsetX : curiosityCompOffsetX;
+                initOffsetY = isMain ? mainCompOffsetY : curiosityCompOffsetY;
+
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('touchmove', drag, {passive: false});
+                document.addEventListener('mouseup', endDrag);
+                document.addEventListener('touchend', endDrag);
+            }
+
+            function drag(e) {
+                if(!isDragging) return;
+                if(e.type === 'touchmove') e.preventDefault();
+                const x = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+                const y = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
+
+                const dx = x - startX;
+                const dy = y - startY;
+
+                if (isMain) {
+                    mainCompOffsetX = initOffsetX + dx;
+                    mainCompOffsetY = initOffsetY + dy;
+                } else {
+                    curiosityCompOffsetX = initOffsetX + dx;
+                    curiosityCompOffsetY = initOffsetY + dy;
+                }
+                updateCompositionPreview();
+            }
+
+            function endDrag() {
+                isDragging = false;
+                document.removeEventListener('mousemove', drag);
+                document.removeEventListener('touchmove', drag);
+                document.removeEventListener('mouseup', endDrag);
+                document.removeEventListener('touchend', endDrag);
+            }
+        }
+
+        makeDraggable(compPreviewMain, true);
+        makeDraggable(compPreviewCuriosity, false);
+
         document.getElementById('mode-curiosity').onclick = (e) => {
             currentMode = 'curiosity';
             e.target.classList.add('active');
             document.getElementById('mode-main').classList.remove('active');
             document.getElementById('curiosity-fields').style.display = 'block';
-
+            updateCompositionPreview();
         };
         document.getElementById('mode-main').onclick = (e) => {
             currentMode = 'main';
             e.target.classList.add('active');
             document.getElementById('mode-curiosity').classList.remove('active');
             document.getElementById('curiosity-fields').style.display = 'none';
-
+            updateCompositionPreview();
         };
 
         let enhanceEnabled = false;
@@ -2086,6 +2215,12 @@
             fd.append('caption_curiosity', document.getElementById('caption-curiosity').value);
             fd.append('font_curiosity', document.getElementById('font-curiosity').value);
             fd.append('caption_curiosity_emoji', document.getElementById('caption-emoji-curiosity').value);
+            fd.append('main_comp_scale', mainCompScale);
+            fd.append('main_comp_offset_x', mainCompOffsetX);
+            fd.append('main_comp_offset_y', mainCompOffsetY);
+            fd.append('curiosity_comp_scale', curiosityCompScale);
+            fd.append('curiosity_comp_offset_x', curiosityCompOffsetX);
+            fd.append('curiosity_comp_offset_y', curiosityCompOffsetY);
             fd.append('enhance', enhanceEnabled ? 'true' : 'false');
             fd.append('audio_mode', audioMode);
             fd.append('branding', brandingEnabled ? 'true' : 'false');

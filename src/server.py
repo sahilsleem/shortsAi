@@ -158,6 +158,14 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                 from src.video_ops import DEFAULT_WATERMARK_PATH
                 wm_path = DEFAULT_WATERMARK_PATH if branding_enabled else ""
 
+                # Text composition controls (backward compatible defaults)
+                main_comp_scale = max(0.6, min(1.4, float(form_data.get('main_comp_scale', '1.0'))))
+                main_comp_offset_x = int(float(form_data.get('main_comp_offset_x', '0')))
+                main_comp_offset_y = int(float(form_data.get('main_comp_offset_y', '0')))
+                curiosity_comp_scale = max(0.6, min(1.4, float(form_data.get('curiosity_comp_scale', '1.0'))))
+                curiosity_comp_offset_x = int(float(form_data.get('curiosity_comp_offset_x', '0')))
+                curiosity_comp_offset_y = int(float(form_data.get('curiosity_comp_offset_y', '0')))
+
                 req_id = str(uuid.uuid4())
                 workspace = Path(f"working/{req_id}").resolve()
                 os.makedirs(workspace, exist_ok=True)
@@ -231,9 +239,14 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
 
                     if mode == "main":
                         cap = CaptionData(main_text=caption_main, curiosity_text="", emoji=caption_main_emoji, mode="main")
-                        fs = compute_best_font_size(cap, font_main, 936, 3)
+                        fs = compute_best_font_size(cap, font_main, 936, 3, composition_scale=main_comp_scale)
                         overlay_path = workspace / "overlay.png"
-                        generate_text_overlay(cap, font_main, fs, str(overlay_path))
+                        generate_text_overlay(
+                            cap, font_main, fs, str(overlay_path),
+                            composition_scale=main_comp_scale,
+                            composition_offset_x=main_comp_offset_x,
+                            composition_offset_y=main_comp_offset_y
+                        )
 
                         render_main_video(
                             str(input_path), str(output_path), str(overlay_path),
@@ -252,13 +265,23 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                         cap_hook = CaptionData(main_text=hook_black, curiosity_text=hook_red, emoji=caption_main_emoji)
                         cap_reveal = CaptionData(main_text=caption_curiosity, curiosity_text="", emoji=caption_curiosity_emoji)
 
-                        fs_hook = compute_best_font_size(cap_hook, font_main, 936, 3)
-                        fs_reveal = compute_best_font_size(cap_reveal, font_curiosity, 936, 3)
+                        fs_hook = compute_best_font_size(cap_hook, font_main, 936, 3, composition_scale=main_comp_scale)
+                        fs_reveal = compute_best_font_size(cap_reveal, font_curiosity, 936, 3, composition_scale=curiosity_comp_scale)
 
                         hook_overlay = workspace / "hook.png"
                         reveal_overlay = workspace / "reveal.png"
-                        generate_text_overlay(cap_hook, font_main, fs_hook, str(hook_overlay))
-                        generate_text_overlay(cap_reveal, font_curiosity, fs_reveal, str(reveal_overlay))
+                        generate_text_overlay(
+                            cap_hook, font_main, fs_hook, str(hook_overlay),
+                            composition_scale=main_comp_scale,
+                            composition_offset_x=main_comp_offset_x,
+                            composition_offset_y=main_comp_offset_y
+                        )
+                        generate_text_overlay(
+                            cap_reveal, font_curiosity, fs_reveal, str(reveal_overlay),
+                            composition_scale=curiosity_comp_scale,
+                            composition_offset_x=curiosity_comp_offset_x,
+                            composition_offset_y=curiosity_comp_offset_y
+                        )
 
                         if cut_time is None:
                             cut_time = start_time + (end_time - start_time) / 2.0
