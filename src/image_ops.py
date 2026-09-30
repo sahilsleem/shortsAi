@@ -165,11 +165,7 @@ def calculate_visual_font_scale(reference_font_path: str, alternative_font_path:
                 
     return best_fs
 
-def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: int, composition_scale: float = 1.0) -> int:
-    # Apply composition scale: larger scale → narrower effective width → more wrapping
-    # This preserves the existing 30px fitting rule while making text appear larger
-    effective_max_width = int(max_width / max(0.6, min(1.4, composition_scale))) if composition_scale != 1.0 else max_width
-
+def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: int) -> int:
     img = Image.new("RGBA", (10, 10))
     draw = ImageDraw.Draw(img)
     pilmoji_context = None
@@ -194,7 +190,7 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
                 font = ImageFont.truetype(CALISTOGA_PATH, fs)
             except IOError:
                 continue
-            lines = wrap_words(words, font, effective_max_width, draw, pilmoji_context)
+            lines = wrap_words(words, font, max_width, draw, pilmoji_context)
             if lines is not None and len(lines) <= target_lines:
                 cal_base_size = fs
                 target_line_count = len(lines)
@@ -238,7 +234,7 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
                 f_check = ImageFont.truetype(font_path, fs)
             except IOError:
                 continue
-            w_res = wrap_words(words, f_check, effective_max_width, draw, pilmoji_context)
+            w_res = wrap_words(words, f_check, max_width, draw, pilmoji_context)
             if w_res is not None and len(w_res) <= target_line_count:
                 alt_base_size = fs
                 break
@@ -249,7 +245,7 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
                     f_check = ImageFont.truetype(font_path, fs)
                 except IOError:
                     continue
-                if wrap_words(words, f_check, effective_max_width, draw, pilmoji_context) is not None:
+                if wrap_words(words, f_check, max_width, draw, pilmoji_context) is not None:
                     alt_base_size = fs
                     break
 
@@ -266,7 +262,7 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
     # Count final lines for diagnostic logging
     try:
         final_font = ImageFont.truetype(font_path, final_font_size)
-        final_lines = wrap_words(words, final_font, effective_max_width, draw, pilmoji_context) or []
+        final_lines = wrap_words(words, final_font, max_width, draw, pilmoji_context) or []
         line_count = len(final_lines)
     except IOError:
         line_count = 0
@@ -284,8 +280,7 @@ def compute_best_font_size(caption, font_path: str, max_width: int, max_lines: i
 
     return final_font_size
 
-def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_width: int,
-                 composition_scale: float = 1.0, composition_offset_x: int = 0, composition_offset_y: int = 0):
+def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_width: int):
     draw = ImageDraw.Draw(img)
     pilmoji_context = None
     if Pilmoji:
@@ -294,9 +289,6 @@ def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_
     words = get_word_list(caption)
     if not words:
         return
-
-    # Apply composition scale to max_width inversely for wrapping
-    effective_max_width = int(max_width / max(0.6, min(1.4, composition_scale))) if composition_scale != 1.0 else max_width
         
     CALISTOGA_PATH = str(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts", "Calistoga-Regular.ttf"))
     try:
@@ -307,7 +299,7 @@ def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_
         except IOError:
             best_font = ImageFont.load_default()
         
-    best_lines = wrap_words(words, best_font, effective_max_width, draw, pilmoji_context) or []
+    best_lines = wrap_words(words, best_font, max_width, draw, pilmoji_context) or []
         
     # Baseline anchoring logic
     if pilmoji_context:
@@ -326,26 +318,14 @@ def draw_caption(img: Image.Image, caption, font_path: str, font_size: int, max_
     # Anchor the baseline of the LAST line consistently at Y=375 for all fonts.
     # This guarantees identical 30-35px separation from the Y=420 video frame 
     # regardless of an alternative font's descender depth.
-    last_line_top = 375 - ascent + composition_offset_y
+    last_line_top = 375 - ascent
     current_y = last_line_top - (max(0, len(best_lines) - 1) * (line_height + line_spacing))
-
-    # Clamp composition to stay within canvas bounds (prevent complete overflow)
-    # Allow text to extend partially off-canvas but not completely
-    min_y = -200  # Allow some overflow above
-    max_y = img.height - 50  # Must keep at least some text visible
-    if current_y < min_y:
-        current_y = min_y
-    elif current_y > max_y:
-        current_y = max_y
     
     space_w = get_text_width(" ", best_font, pilmoji_context, draw)
     
     for line in best_lines:
         line_width = sum(get_text_width(w, best_font, pilmoji_context, draw) for w, c in line) + space_w * (len(line) - 1)
-        current_x = (img.width - line_width) // 2 + composition_offset_x
-
-        # Clamp horizontal position
-        current_x = max(-line_width + 50, min(current_x, img.width - 50))
+        current_x = (img.width - line_width) // 2
         
         if pilmoji_context:
             full_line_text = " ".join(w for w, c in line)
@@ -365,18 +345,12 @@ def generate_text_overlay(
     caption, 
     font_path: str, 
     font_size: int,
-    output_path: str,
-    composition_scale: float = 1.0,
-    composition_offset_x: int = 0,
-    composition_offset_y: int = 0
+    output_path: str
 ):
     img = Image.new("RGBA", (1080, 1920), (0, 0, 0, 0))
     
     # User requested exactly 936px max width to sit 36px inside the 1008px video frame
-    draw_caption(img, caption, font_path, font_size=font_size, max_width=936,
-                 composition_scale=composition_scale,
-                 composition_offset_x=composition_offset_x,
-                 composition_offset_y=composition_offset_y)
+    draw_caption(img, caption, font_path, font_size=font_size, max_width=936)
     
     img.save(output_path)
     return output_path
