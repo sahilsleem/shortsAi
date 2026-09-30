@@ -1214,6 +1214,10 @@
                 currentZoomIndex = 0;
                 applyZoom(false);
 
+                uploadArea.style.display = 'none';
+                editorSection.style.display = 'block';
+                resultSection.style.display = 'none';
+
                 origW = videoElement.videoWidth;
                 origH = videoElement.videoHeight;
                 maxCropSize = Math.min(origW, origH);
@@ -1225,6 +1229,7 @@
 
                 cropBox.style.left = ((100 - parseFloat(cropBox.style.width)) / 2) + '%';
                 cropBox.style.top = Math.min(((100 - parseFloat(cropBox.style.height)) / 2), 20) + '%';
+                enforceBounds();
                 updateCropCoords();
 
                 // Initialize timeline with segment owning default crop state
@@ -1245,9 +1250,12 @@
 
                 videoElement.currentTime = dur / 2;
 
-                uploadArea.style.display = 'none';
-                editorSection.style.display = 'block';
-                resultSection.style.display = 'none';
+                requestAnimationFrame(() => {
+                    fitPreviewContainer();
+                    enforceBounds();
+                    updateCropCoords();
+                    saveActiveSegmentCrop();
+                });
             };
         };
 
@@ -2015,6 +2023,10 @@
             if (idx < 0 || idx >= segments.length) return;
             const seg = segments[idx];
             if (!origW || !origH || !maxCropSize) return;
+
+            if (!previewContainer.style.width || !previewContainer.style.height || previewContainer.style.width === '0px') {
+                fitPreviewContainer();
+            }
 
             const zoomVal = seg.zoom !== undefined ? seg.zoom : 100;
             zoomSlider.value = zoomVal;

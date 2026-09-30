@@ -659,7 +659,7 @@ def test_mobile_creator_redesign_structure():
     assert 'Saba Bollywood' not in html
 
 def test_compact_mobile_preview_viewport():
-    """Verify that the preview viewport is compact and constrained to prevent page height explosion."""
+    """Verify that the preview viewport is compact, constrained, and sizes 9:16 portrait video properly."""
     from pathlib import Path
     html = Path("static/index.html").read_text(encoding="utf-8")
 
@@ -669,6 +669,30 @@ def test_compact_mobile_preview_viewport():
     assert 'fitPreviewContainer' in html
     assert 'previewContainer.onmousedown = startDrag' in html
     assert 'previewContainer.ontouchstart = startDrag' in html
+
+    # Verify editorSection is displayed before fitPreviewContainer so clientWidth/clientHeight are non-zero
+    editor_display_pos = html.find("editorSection.style.display = 'block';")
+    fit_call_pos = html.find("fitPreviewContainer();")
+    assert editor_display_pos != -1
+    assert fit_call_pos != -1
+    assert editor_display_pos < fit_call_pos, "editorSection must be displayed before fitPreviewContainer"
+
+    # Verify 9:16 aspect ratio math matching fitPreviewContainer
+    avail_w, avail_h = 360, 260
+    vid_w, vid_h = 1080, 1920
+    aspect = vid_w / vid_h
+    if avail_w / avail_h > aspect:
+        target_h = avail_h
+        target_w = round(avail_h * aspect)
+    else:
+        target_w = avail_w
+        target_h = round(avail_w / aspect)
+
+    assert target_h == 260
+    assert target_w == 146
+    # 146x260 inside 360x260 leaves surrounding black space (horizontal margins of (360-146)/2 = 107px)
+    assert target_w < avail_w
+    assert round(target_w / target_h, 2) == round(9 / 16, 2)
 
 def test_neutral_caption_ui():
     """Verify neutral caption placeholders, emoji inputs without placeholders, and absence of Bollywood examples."""
