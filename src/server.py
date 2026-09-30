@@ -176,19 +176,30 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                     if segments and len(segments) > 0:
                         concat_txt = workspace / "concat.txt"
                         concat_out = workspace / "concat.mp4"
+                        from src.video_ops import get_ffmpeg_path, has_audio_stream
+                        import subprocess
+                        has_audio = has_audio_stream(str(input_path))
                         with open(concat_txt, "w") as f:
                             for i, seg in enumerate(segments):
                                 seg_out = workspace / f"seg_{i}.mp4"
                                 s_start = max(0.0, float(seg.get('start', 0)))
                                 s_end = min(actual_dur, float(seg.get('end', actual_dur)))
-                                from src.video_ops import get_ffmpeg_path
-                                import subprocess
-                                subprocess.run([
+                                s_crop_x = int(seg.get('crop_x', crop_x))
+                                s_crop_y = int(seg.get('crop_y', crop_y))
+                                s_crop_size = int(seg.get('crop_size', crop_size))
+                                seg_cmd = [
                                     get_ffmpeg_path(), "-y",
                                     "-ss", str(s_start), "-t", str(max(0.1, s_end - s_start)),
                                     "-i", str(input_path),
-                                    "-c", "copy", str(seg_out)
-                                ], check=True)
+                                    "-vf", f"crop={s_crop_size}:{s_crop_size}:{s_crop_x}:{s_crop_y},scale=1002:1002",
+                                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-r", "30"
+                                ]
+                                if has_audio:
+                                    seg_cmd.extend(["-c:a", "aac", "-b:a", "192k", "-ar", "44100"])
+                                else:
+                                    seg_cmd.append("-an")
+                                seg_cmd.append(str(seg_out))
+                                subprocess.run(seg_cmd, check=True)
                                 f.write(f"file '{seg_out.name}'\n")
 
                         subprocess.run([
@@ -199,10 +210,17 @@ class ShortsAIHandler(BaseHTTPRequestHandler):
                         ], check=True)
 
                         input_path = concat_out
-                        actual_dur = get_duration(str(input_path))
+                        concat_dur = get_duration(str(input_path))
+                        if concat_dur > 0:
+                            actual_dur = concat_dur
+                        else:
+                            actual_dur = sum(max(0.1, float(s.get('end', 0)) - float(s.get('start', 0))) for s in segments)
 
                         start_time = 0.0
                         end_time = actual_dur
+                        crop_x = 0
+                        crop_y = 0
+                        crop_size = 1002
 
                         if mode != "main" and len(segments) > 1:
                             cut_time = max(0.001, min(float(segments[0].get('end', 0)) - float(segments[0].get('start', 0)), actual_dur - 0.001))

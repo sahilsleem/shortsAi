@@ -1214,19 +1214,6 @@
                 currentZoomIndex = 0;
                 applyZoom(false);
 
-                // Initialize timeline
-                segments = [{ start: 0, end: dur }];
-                activeSegmentIndex = 0;
-                generateFilmstrip();
-                renderTimeline();
-                renderTimeRuler();
-
-                videoElement.currentTime = dur / 2;
-
-                uploadArea.style.display = 'none';
-                editorSection.style.display = 'block';
-                resultSection.style.display = 'none';
-
                 origW = videoElement.videoWidth;
                 origH = videoElement.videoHeight;
                 maxCropSize = Math.min(origW, origH);
@@ -1239,6 +1226,28 @@
                 cropBox.style.left = ((100 - parseFloat(cropBox.style.width)) / 2) + '%';
                 cropBox.style.top = Math.min(((100 - parseFloat(cropBox.style.height)) / 2), 20) + '%';
                 updateCropCoords();
+
+                // Initialize timeline with segment owning default crop state
+                segments = [{
+                    start: 0,
+                    end: dur,
+                    crop_x: cropX,
+                    crop_y: cropY,
+                    crop_size: Math.round(currentCropSize),
+                    zoom: 100,
+                    crop_left_pct: parseFloat(cropBox.style.left),
+                    crop_top_pct: parseFloat(cropBox.style.top)
+                }];
+                activeSegmentIndex = 0;
+                generateFilmstrip();
+                renderTimeline();
+                renderTimeRuler();
+
+                videoElement.currentTime = dur / 2;
+
+                uploadArea.style.display = 'none';
+                editorSection.style.display = 'block';
+                resultSection.style.display = 'none';
             };
         };
 
@@ -1395,6 +1404,7 @@
                 fitPreviewContainer();
                 enforceBounds();
                 updateCropCoords();
+                saveActiveSegmentCrop();
                 renderTimeRuler();
             }
         });
@@ -1584,6 +1594,7 @@
                 if (activeSegmentIndex !== hit.index) {
                     activeSegmentIndex = hit.index;
                     renderTimeline();
+                    loadSegmentCrop(activeSegmentIndex);
                 }
                 activeHandle = 'segment';
                 dragSegStartX = cx;
@@ -1791,10 +1802,20 @@
             if (t > seg.start + 0.05 && t < seg.end - 0.05) {
                 const oldEnd = seg.end;
                 seg.end = t;
-                const newSeg = { start: t, end: oldEnd };
+                const newSeg = {
+                    start: t,
+                    end: oldEnd,
+                    crop_x: seg.crop_x !== undefined ? seg.crop_x : cropX,
+                    crop_y: seg.crop_y !== undefined ? seg.crop_y : cropY,
+                    crop_size: seg.crop_size !== undefined ? seg.crop_size : Math.round(currentCropSize),
+                    zoom: seg.zoom !== undefined ? seg.zoom : parseFloat(zoomSlider.value),
+                    crop_left_pct: seg.crop_left_pct !== undefined ? seg.crop_left_pct : parseFloat(cropBox.style.left),
+                    crop_top_pct: seg.crop_top_pct !== undefined ? seg.crop_top_pct : parseFloat(cropBox.style.top)
+                };
                 segments.splice(activeSegmentIndex + 1, 0, newSeg);
                 activeSegmentIndex++;
                 renderTimeline();
+                loadSegmentCrop(activeSegmentIndex);
             }
         };
 
@@ -1804,10 +1825,20 @@
             segments.splice(activeSegmentIndex, 1);
             if (segments.length === 0) {
                 // Must have at least one segment
-                segments.push({ start: 0, end: videoElement.duration });
+                segments.push({
+                    start: 0,
+                    end: videoElement.duration,
+                    crop_x: cropX,
+                    crop_y: cropY,
+                    crop_size: Math.round(currentCropSize),
+                    zoom: parseFloat(zoomSlider.value),
+                    crop_left_pct: parseFloat(cropBox.style.left),
+                    crop_top_pct: parseFloat(cropBox.style.top)
+                });
             }
             activeSegmentIndex = Math.max(0, activeSegmentIndex - 1);
             renderTimeline();
+            loadSegmentCrop(activeSegmentIndex);
             requestSeek(segments[activeSegmentIndex].start);
         };
 
@@ -1818,7 +1849,9 @@
             } else {
                 if (segments.length === 0) return;
                 const seg = segments[activeSegmentIndex];
-                videoElement.currentTime = seg.start;
+                if (videoElement.currentTime >= seg.end - 0.05 || videoElement.currentTime < seg.start) {
+                    videoElement.currentTime = seg.start;
+                }
                 videoElement.play();
                 isPlaying = true;
                 btnPlaySelection.innerText = "Stop";
@@ -1828,10 +1861,35 @@
 
         function checkLoop() {
             if (!isPlaying) return;
+            const curTime = videoElement.currentTime;
             const seg = segments[activeSegmentIndex];
-            if (videoElement.currentTime >= seg.end) {
-                stopPlayback();
-                return;
+
+            if (curTime < seg.start || curTime >= seg.end) {
+                let foundIdx = -1;
+                for (let i = 0; i < segments.length; i++) {
+                    if (curTime >= segments[i].start && curTime < segments[i].end) {
+                        foundIdx = i;
+                        break;
+                    }
+                }
+                if (foundIdx !== -1 && foundIdx !== activeSegmentIndex) {
+                    activeSegmentIndex = foundIdx;
+                    renderTimeline();
+                    loadSegmentCrop(activeSegmentIndex);
+                } else if (curTime >= seg.end) {
+                    if (activeSegmentIndex < segments.length - 1) {
+                        activeSegmentIndex++;
+                        const nextSeg = segments[activeSegmentIndex];
+                        if (Math.abs(curTime - nextSeg.start) > 0.05) {
+                            videoElement.currentTime = nextSeg.start;
+                        }
+                        renderTimeline();
+                        loadSegmentCrop(activeSegmentIndex);
+                    } else {
+                        stopPlayback();
+                        return;
+                    }
+                }
             }
             playbackLoopId = requestAnimationFrame(checkLoop);
         }
@@ -1851,6 +1909,7 @@
             updateCropBoxSize();
             enforceBounds();
             updateCropCoords();
+            saveActiveSegmentCrop();
         };
 
         function fitPreviewContainer() {
@@ -1914,6 +1973,7 @@
             cropBox.style.top = (startTop + dy) + '%';
             enforceBounds();
             updateCropCoords();
+            saveActiveSegmentCrop();
         };
 
         window.onmousemove = doDrag;
@@ -1939,6 +1999,51 @@
             cropY = Math.round(topP * origH);
         }
 
+        function saveActiveSegmentCrop() {
+            if (activeSegmentIndex >= 0 && activeSegmentIndex < segments.length) {
+                const seg = segments[activeSegmentIndex];
+                seg.crop_x = cropX;
+                seg.crop_y = cropY;
+                seg.crop_size = Math.round(currentCropSize);
+                seg.zoom = parseFloat(zoomSlider.value);
+                seg.crop_left_pct = parseFloat(cropBox.style.left);
+                seg.crop_top_pct = parseFloat(cropBox.style.top);
+            }
+        }
+
+        function loadSegmentCrop(idx) {
+            if (idx < 0 || idx >= segments.length) return;
+            const seg = segments[idx];
+            if (!origW || !origH || !maxCropSize) return;
+
+            const zoomVal = seg.zoom !== undefined ? seg.zoom : 100;
+            zoomSlider.value = zoomVal;
+
+            if (seg.crop_size !== undefined && seg.crop_size > 0) {
+                currentCropSize = seg.crop_size;
+            } else {
+                currentCropSize = maxCropSize * (zoomVal / 100);
+            }
+            const cssW = (currentCropSize / origW) * 100;
+            const cssH = (currentCropSize / origH) * 100;
+            cropBox.style.width = cssW + '%';
+            cropBox.style.height = cssH + '%';
+
+            if (seg.crop_left_pct !== undefined && seg.crop_top_pct !== undefined) {
+                cropBox.style.left = seg.crop_left_pct + '%';
+                cropBox.style.top = seg.crop_top_pct + '%';
+            } else if (seg.crop_x !== undefined && seg.crop_y !== undefined) {
+                cropBox.style.left = (seg.crop_x / origW * 100) + '%';
+                cropBox.style.top = (seg.crop_y / origH * 100) + '%';
+            } else {
+                cropBox.style.left = ((100 - cssW) / 2) + '%';
+                cropBox.style.top = Math.min(((100 - cssH) / 2), 20) + '%';
+            }
+
+            enforceBounds();
+            updateCropCoords();
+        }
+
         const btnGenerate = document.getElementById('btn-generate');
         const statusMsg = document.getElementById('status-message');
 
@@ -1950,6 +2055,7 @@
             statusMsg.innerText = "Rendering fixed-crop video...";
             resultSection.style.display = 'none';
             stopPlayback();
+            saveActiveSegmentCrop();
 
             const fd = new FormData();
             fd.append('video', file);

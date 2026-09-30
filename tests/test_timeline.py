@@ -1,11 +1,42 @@
 class TimelineState:
-    def __init__(self, duration):
+    def __init__(self, duration, default_crop=None):
         self.duration = duration
-        self.segments = [{"start": 0.0, "end": float(duration)}]
+        if default_crop is None:
+            default_crop = {"crop_x": 0, "crop_y": 0, "crop_size": 1002, "zoom": 100, "crop_left_pct": 0.0, "crop_top_pct": 0.0}
+        self.default_crop = dict(default_crop)
+        self.segments = [{
+            "start": 0.0,
+            "end": float(duration),
+            **self.default_crop
+        }]
         self.active_idx = 0
         self.zoom_levels = [100, 200, 400, 800, 1600, 3200]
         self.zoom_level = 100
         self.scroll_left = 0.0
+
+    def set_active_crop(self, crop_x=None, crop_y=None, crop_size=None, zoom=None, crop_left_pct=None, crop_top_pct=None):
+        if not self.segments or self.active_idx < 0 or self.active_idx >= len(self.segments):
+            return
+        seg = self.segments[self.active_idx]
+        if crop_x is not None: seg["crop_x"] = crop_x
+        if crop_y is not None: seg["crop_y"] = crop_y
+        if crop_size is not None: seg["crop_size"] = crop_size
+        if zoom is not None: seg["zoom"] = zoom
+        if crop_left_pct is not None: seg["crop_left_pct"] = crop_left_pct
+        if crop_top_pct is not None: seg["crop_top_pct"] = crop_top_pct
+
+    def get_active_crop(self):
+        if not self.segments or self.active_idx < 0 or self.active_idx >= len(self.segments):
+            return dict(self.default_crop)
+        seg = self.segments[self.active_idx]
+        return {
+            "crop_x": seg.get("crop_x", self.default_crop["crop_x"]),
+            "crop_y": seg.get("crop_y", self.default_crop["crop_y"]),
+            "crop_size": seg.get("crop_size", self.default_crop["crop_size"]),
+            "zoom": seg.get("zoom", self.default_crop["zoom"]),
+            "crop_left_pct": seg.get("crop_left_pct", self.default_crop["crop_left_pct"]),
+            "crop_top_pct": seg.get("crop_top_pct", self.default_crop["crop_top_pct"]),
+        }
 
     def get_track_width(self, viewport_width):
         return (viewport_width * self.zoom_level) / 100.0
@@ -80,14 +111,28 @@ class TimelineState:
         if t > seg["start"] + 0.05 and t < seg["end"] - 0.05:
             old_end = seg["end"]
             seg["end"] = t
-            self.segments.insert(self.active_idx + 1, {"start": t, "end": old_end})
+            new_seg = {
+                "start": t,
+                "end": old_end,
+                "crop_x": seg.get("crop_x", self.default_crop["crop_x"]),
+                "crop_y": seg.get("crop_y", self.default_crop["crop_y"]),
+                "crop_size": seg.get("crop_size", self.default_crop["crop_size"]),
+                "zoom": seg.get("zoom", self.default_crop["zoom"]),
+                "crop_left_pct": seg.get("crop_left_pct", self.default_crop["crop_left_pct"]),
+                "crop_top_pct": seg.get("crop_top_pct", self.default_crop["crop_top_pct"]),
+            }
+            self.segments.insert(self.active_idx + 1, new_seg)
             self.active_idx += 1
 
     def delete(self):
         if not self.segments: return
         self.segments.pop(self.active_idx)
         if not self.segments:
-            self.segments.append({"start": 0.0, "end": float(self.duration)})
+            self.segments.append({
+                "start": 0.0,
+                "end": float(self.duration),
+                **self.default_crop
+            })
         self.active_idx = max(0, self.active_idx - 1)
 
     def hit_test(self, px, rect_width):
@@ -656,3 +701,312 @@ def test_neutral_caption_ui():
     assert 'Salman' not in html
     assert 'Arpita' not in html
     assert 'Bollywood' not in html
+
+
+def test_segment_crop_initialization():
+    """Verify that a newly initialized timeline has default crop/zoom values on segment 0."""
+    tl = TimelineState(15.0)
+    assert len(tl.segments) == 1
+    assert tl.active_idx == 0
+    seg = tl.get_active()
+    assert seg["start"] == 0.0
+    assert seg["end"] == 15.0
+    assert seg["crop_x"] == 0
+    assert seg["crop_y"] == 0
+    assert seg["crop_size"] == 1002
+    assert seg["zoom"] == 100
+    assert seg["crop_left_pct"] == 0.0
+    assert seg["crop_top_pct"] == 0.0
+
+    crop = tl.get_active_crop()
+    assert crop["crop_x"] == 0
+    assert crop["crop_y"] == 0
+    assert crop["crop_size"] == 1002
+    assert crop["zoom"] == 100
+
+
+def test_segment_crop_switching_and_isolation():
+    """Verify that each segment holds its own crop parameters without leaking to other segments."""
+    tl = TimelineState(20.0)
+    tl.split(10.0)
+    assert len(tl.segments) == 2
+    assert tl.active_idx == 1
+
+    # Modify segment 1 crop
+    tl.set_active_crop(crop_x=120, crop_y=50, crop_size=800, zoom=125, crop_left_pct=10.0, crop_top_pct=5.0)
+    seg1_crop = tl.get_active_crop()
+    assert seg1_crop["crop_x"] == 120
+    assert seg1_crop["crop_y"] == 50
+    assert seg1_crop["crop_size"] == 800
+    assert seg1_crop["zoom"] == 125
+
+    # Switch to segment 0
+    tl.active_idx = 0
+    seg0_crop = tl.get_active_crop()
+    assert seg0_crop["crop_x"] == 0
+    assert seg0_crop["crop_y"] == 0
+    assert seg0_crop["crop_size"] == 1002
+    assert seg0_crop["zoom"] == 100
+
+    # Modify segment 0 crop
+    tl.set_active_crop(crop_x=40, crop_y=80, crop_size=600, zoom=150)
+    assert tl.get_active_crop()["crop_x"] == 40
+    assert tl.get_active_crop()["zoom"] == 150
+
+    # Switch back to segment 1 and verify segment 0's changes did not affect segment 1
+    tl.active_idx = 1
+    assert tl.get_active_crop()["crop_x"] == 120
+    assert tl.get_active_crop()["crop_y"] == 50
+    assert tl.get_active_crop()["crop_size"] == 800
+    assert tl.get_active_crop()["zoom"] == 125
+
+
+def test_segment_split_inherits_crop():
+    """Verify that splitting a segment causes the newly created segment to inherit the crop/zoom state."""
+    tl = TimelineState(30.0)
+    tl.set_active_crop(crop_x=220, crop_y=140, crop_size=750, zoom=135, crop_left_pct=15.0, crop_top_pct=8.0)
+
+    tl.split(12.0)
+    assert len(tl.segments) == 2
+    assert tl.active_idx == 1
+
+    # New segment must inherit parent segment's crop
+    seg1_crop = tl.get_active_crop()
+    assert seg1_crop["crop_x"] == 220
+    assert seg1_crop["crop_y"] == 140
+    assert seg1_crop["crop_size"] == 750
+    assert seg1_crop["zoom"] == 135
+    assert seg1_crop["crop_left_pct"] == 15.0
+    assert seg1_crop["crop_top_pct"] == 8.0
+
+    # Modifying new segment does not mutate the original segment
+    tl.set_active_crop(crop_x=500, crop_y=300, zoom=200)
+    tl.active_idx = 0
+    assert tl.get_active_crop()["crop_x"] == 220
+    assert tl.get_active_crop()["crop_y"] == 140
+    assert tl.get_active_crop()["zoom"] == 135
+
+
+def test_segment_trim_preserves_crop():
+    """Verify that moving IN or OUT handles does not alter or reset the segment's crop state."""
+    tl = TimelineState(20.0)
+    tl.set_active_crop(crop_x=150, crop_y=250, crop_size=650, zoom=160)
+
+    # Move IN handle
+    tl.move_in(3.5)
+    assert tl.segments[0]["start"] == 3.5
+    crop = tl.get_active_crop()
+    assert crop["crop_x"] == 150
+    assert crop["crop_y"] == 250
+    assert crop["crop_size"] == 650
+    assert crop["zoom"] == 160
+
+    # Move OUT handle
+    tl.move_out(14.2)
+    assert tl.segments[0]["end"] == 14.2
+    crop = tl.get_active_crop()
+    assert crop["crop_x"] == 150
+    assert crop["crop_y"] == 250
+    assert crop["crop_size"] == 650
+    assert crop["zoom"] == 160
+
+
+def test_segment_delete_preserves_other_crops():
+    """Verify deleting a segment removes its crop and preserves crops of all other segments."""
+    tl = TimelineState(30.0)
+    tl.split(10.0)
+    tl.split(20.0)
+    assert len(tl.segments) == 3
+
+    # Segment 0: zoom 100, x=10
+    tl.active_idx = 0
+    tl.set_active_crop(crop_x=10, zoom=100)
+    # Segment 1: zoom 150, x=50
+    tl.active_idx = 1
+    tl.set_active_crop(crop_x=50, zoom=150)
+    # Segment 2: zoom 200, x=90
+    tl.active_idx = 2
+    tl.set_active_crop(crop_x=90, zoom=200)
+
+    # Delete segment 1
+    tl.active_idx = 1
+    tl.delete()
+    assert len(tl.segments) == 2
+
+    # Segment 0 still has x=10, zoom=100
+    tl.active_idx = 0
+    assert tl.get_active_crop()["crop_x"] == 10
+    assert tl.get_active_crop()["zoom"] == 100
+
+    # Old Segment 2 is now Segment 1 with x=90, zoom=200
+    tl.active_idx = 1
+    assert tl.get_active_crop()["crop_x"] == 90
+    assert tl.get_active_crop()["zoom"] == 200
+
+
+def test_segment_crop_backward_compatibility():
+    """Verify that legacy segments without crop fields safely fall back to default crop."""
+    tl = TimelineState(20.0)
+    # Simulate legacy segments payload
+    tl.segments = [
+        {"start": 0.0, "end": 5.0},
+        {"start": 5.0, "end": 10.0}
+    ]
+    tl.active_idx = 0
+    crop = tl.get_active_crop()
+    assert crop["crop_x"] == 0
+    assert crop["crop_y"] == 0
+    assert crop["crop_size"] == 1002
+    assert crop["zoom"] == 100
+
+    # Splitting legacy segment succeeds and populates default crop on new segment
+    tl.split(2.5)
+    assert len(tl.segments) == 3
+    assert tl.active_idx == 1
+    assert tl.get_active_crop()["crop_size"] == 1002
+
+
+def test_three_independent_segment_crops():
+    """Verify three separate timeline clips each keep their own independent crop, zoom, and pan."""
+    tl = TimelineState(30.0)
+    tl.split(10.0)
+    tl.split(20.0)
+    assert len(tl.segments) == 3
+
+    crops = [
+        {"crop_x": 0, "crop_y": 0, "crop_size": 1000, "zoom": 100, "crop_left_pct": 0.0, "crop_top_pct": 0.0},
+        {"crop_x": 100, "crop_y": 50, "crop_size": 800, "zoom": 125, "crop_left_pct": 5.0, "crop_top_pct": 2.5},
+        {"crop_x": 250, "crop_y": 180, "crop_size": 500, "zoom": 200, "crop_left_pct": 12.0, "crop_top_pct": 9.0},
+    ]
+
+    for i, c in enumerate(crops):
+        tl.active_idx = i
+        tl.set_active_crop(**c)
+
+    for i, expected in enumerate(crops):
+        tl.active_idx = i
+        actual = tl.get_active_crop()
+        assert actual == expected
+
+
+def test_server_render_per_segment_crop(monkeypatch, tmp_path):
+    """Verify that server /render processes each segment with its individual crop and scale filter."""
+    import io
+    import json
+    import subprocess
+    from src.server import ShortsAIHandler
+
+    executed_cmds = []
+    def mock_run(cmd, *args, **kwargs):
+        executed_cmds.append(list(cmd))
+        out_target = cmd[-1]
+        if str(out_target).endswith(".mp4"):
+            with open(out_target, "wb") as f:
+                f.write(b"dummy mp4")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(subprocess, "run", mock_run)
+    monkeypatch.setattr("src.server.get_duration", lambda p: 20.0)
+    monkeypatch.setattr("src.video_ops.has_audio_stream", lambda p: True)
+
+    rendered_call = {}
+    def mock_render_main_video(*args, **kwargs):
+        rendered_call["args"] = args
+        rendered_call["kwargs"] = kwargs
+        output_path = args[1]
+        with open(output_path, "wb") as f:
+            f.write(b"rendered final video")
+
+    monkeypatch.setattr("src.server.render_main_video", mock_render_main_video)
+
+    segments = [
+        {"start": 0.0, "end": 4.0, "crop_x": 10, "crop_y": 20, "crop_size": 900},
+        {"start": 6.0, "end": 10.0, "crop_x": 100, "crop_y": 150, "crop_size": 720}
+    ]
+
+    boundary = "----TestBoundary12345"
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="video"; filename="test.mp4"\r\n'
+        f"Content-Type: video/mp4\r\n\r\n"
+        f"fake video content\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="mode"\r\n\r\n'
+        f"main\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="segments"\r\n\r\n'
+        f"{json.dumps(segments)}\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="crop_x"\r\n\r\n'
+        f"0\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="crop_y"\r\n\r\n'
+        f"0\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="crop_size"\r\n\r\n'
+        f"1080\r\n"
+        f"--{boundary}--\r\n"
+    ).encode("utf-8")
+
+    class DummyHandler(ShortsAIHandler):
+        def __init__(self):
+            self.path = "/render"
+            self.client_address = ("127.0.0.1", 12345)
+            self.headers = {
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Content-Length": str(len(body))
+            }
+            self.rfile = io.BytesIO(body)
+            self.wfile = io.BytesIO()
+            self.response_code = None
+            self.response_headers = {}
+            self.error_msg = None
+
+        def send_response(self, code, message=None):
+            self.response_code = code
+
+        def send_header(self, keyword, value):
+            self.response_headers[keyword] = value
+
+        def end_headers(self):
+            pass
+
+        def send_error(self, code, message=None, explain=None):
+            self.response_code = code
+            self.error_msg = message
+
+        def log_message(self, format, *args):
+            pass
+
+    handler = DummyHandler()
+    handler.do_POST()
+
+    assert handler.error_msg is None, f"Handler failed with: {handler.error_msg}"
+    assert handler.response_code == 200
+
+    # Verify per-segment FFmpeg commands
+    # seg_0: crop=900:900:10:20,scale=1002:1002
+    # seg_1: crop=720:720:100:150,scale=1002:1002
+    vf_filters = [cmd[cmd.index("-vf") + 1] for cmd in executed_cmds if "-vf" in cmd]
+    assert len(vf_filters) >= 2
+    assert "crop=900:900:10:20,scale=1002:1002" in vf_filters[0]
+    assert "crop=720:720:100:150,scale=1002:1002" in vf_filters[1]
+
+    # Verify concat call was made
+    concat_cmds = [cmd for cmd in executed_cmds if "concat" in cmd]
+    assert len(concat_cmds) >= 1
+
+    # Verify render_main_video received the pre-cropped concat video with normalized crop coordinates
+    assert rendered_call["args"][5] == 0     # crop_x
+    assert rendered_call["args"][6] == 0     # crop_y
+    assert rendered_call["args"][7] == 1002  # crop_size
+
+
+def test_html_per_clip_crop_functions():
+    """Verify that index.html contains saveActiveSegmentCrop and loadSegmentCrop logic."""
+    from pathlib import Path
+    html = Path("static/index.html").read_text(encoding="utf-8")
+    assert "function saveActiveSegmentCrop()" in html
+    assert "function loadSegmentCrop(idx)" in html
+    assert "saveActiveSegmentCrop();" in html
+    assert "loadSegmentCrop(activeSegmentIndex);" in html
