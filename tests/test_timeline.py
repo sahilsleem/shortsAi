@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath("."))
+
 class TimelineState:
     def __init__(self, duration, default_crop=None):
         self.duration = duration
@@ -1034,3 +1038,372 @@ def test_html_per_clip_crop_functions():
     assert "function loadSegmentCrop(idx)" in html
     assert "saveActiveSegmentCrop();" in html
     assert "loadSegmentCrop(activeSegmentIndex);" in html
+
+
+def test_build_segment_render_specs_two_segments_distinct_crops(tmp_path):
+    """Section 8.A: Verify two segments with distinct crop values generate distinct FFmpeg crop/scale commands."""
+    from src.video_ops import build_segment_render_specs
+
+    segments = [
+        {"start": 0.0, "end": 5.0, "crop_x": 0, "crop_y": 0, "crop_size": 500},
+        {"start": 5.0, "end": 10.0, "crop_x": 100, "crop_y": 50, "crop_size": 400}
+    ]
+
+    plan = build_segment_render_specs(
+        segments=segments,
+        actual_dur=10.0,
+        source_video=str(tmp_path / "input.mp4"),
+        workspace=tmp_path,
+        has_audio=True
+    )
+
+    assert plan["is_multisegment"] is True
+    assert len(plan["segments"]) == 2
+
+    seg0 = plan["segments"][0]
+    seg1 = plan["segments"][1]
+
+    # Verify per-segment filter strings contain exact independent crop values
+    assert seg0["vf"] == "crop=500:500:0:0,scale=1002:1002"
+    assert seg1["vf"] == "crop=400:400:100:50,scale=1002:1002"
+
+    # Verify individual FFmpeg commands
+    cmd0 = seg0["ffmpeg_cmd"]
+    cmd1 = seg1["ffmpeg_cmd"]
+    assert "crop=500:500:0:0,scale=1002:1002" in cmd0[cmd0.index("-vf") + 1]
+    assert "crop=400:400:100:50,scale=1002:1002" in cmd1[cmd1.index("-vf") + 1]
+    assert cmd0 != cmd1
+
+    # Verify concat command specifies concat demuxer and re-encoding for clean PTS
+    concat_cmd = plan["concat_cmd"]
+    assert concat_cmd is not None
+    assert "-f" in concat_cmd and concat_cmd[concat_cmd.index("-f") + 1] == "concat"
+    assert "-c:v" in concat_cmd and concat_cmd[concat_cmd.index("-c:v") + 1] == "libx264"
+
+
+def test_build_segment_render_specs_three_segments_distinct_transforms(tmp_path):
+    """Section 8.B: Verify three segments with three different transforms maintain independent specifications."""
+    from src.video_ops import build_segment_render_specs
+    import pytest
+
+    segments = [
+        {"start": 0.0, "end": 3.0, "crop_x": 0, "crop_y": 0, "crop_size": 500},
+        {"start": 3.0, "end": 6.0, "crop_x": 100, "crop_y": 50, "crop_size": 400},
+        {"start": 6.0, "end": 10.0, "crop_x": 200, "crop_y": 150, "crop_size": 300}
+    ]
+
+    plan = build_segment_render_specs(
+        segments=segments,
+        actual_dur=10.0,
+        source_video=str(tmp_path / "input.mp4"),
+        workspace=tmp_path,
+        has_audio=True
+    )
+
+    assert plan["is_multisegment"] is True
+    assert len(plan["segments"]) == 3
+
+    assert plan["segments"][0]["vf"] == "crop=500:500:0:0,scale=1002:1002"
+    assert plan["segments"][1]["vf"] == "crop=400:400:100:50,scale=1002:1002"
+    assert plan["segments"][2]["vf"] == "crop=300:300:200:150,scale=1002:1002"
+
+    assert plan["total_duration"] == pytest.approx(10.0)
+    assert "seg_0.mp4" in plan["concat_txt_content"]
+    assert "seg_1.mp4" in plan["concat_txt_content"]
+    assert "seg_2.mp4" in plan["concat_txt_content"]
+
+
+def test_timeline_split_inherits_and_edits_independently_render_specs(tmp_path):
+    """Section 8.C: Split inherits crop A, editing Clip 2 to crop B results in A then B in render plan."""
+    from src.video_ops import build_segment_render_specs
+
+    tl = TimelineState(10.0)
+    # Clip 1 has crop A
+    tl.set_active_crop(crop_x=0, crop_y=0, crop_size=500, zoom=100)
+    assert tl.get_active_crop()["crop_size"] == 500
+
+    # Split at 5.0 creates Clip 1 and Clip 2, both initially inheriting crop A
+    tl.split(5.0)
+    assert len(tl.segments) == 2
+    assert tl.segments[0]["crop_size"] == 500
+    assert tl.segments[1]["crop_size"] == 500
+
+    # Edit Clip 2 to crop B
+    tl.active_idx = 1
+    tl.set_active_crop(crop_x=100, crop_y=50, crop_size=400, zoom=125)
+    assert tl.segments[0]["crop_size"] == 500
+    assert tl.segments[1]["crop_size"] == 400
+
+    # Render plan must produce A then B
+    plan = build_segment_render_specs(
+        segments=tl.segments,
+        actual_dur=10.0,
+        source_video=str(tmp_path / "input.mp4"),
+        workspace=tmp_path
+    )
+    assert plan["segments"][0]["crop_size"] == 500
+    assert plan["segments"][0]["crop_x"] == 0
+    assert plan["segments"][1]["crop_size"] == 400
+    assert plan["segments"][1]["crop_x"] == 100
+
+
+def test_timeline_delete_preserves_remaining_transforms_render_specs(tmp_path):
+    """Section 8.D: Deleting a middle segment preserves remaining segments' crop transforms."""
+    from src.video_ops import build_segment_render_specs
+
+    tl = TimelineState(10.0)
+    tl.set_active_crop(crop_x=0, crop_y=0, crop_size=500)
+    tl.split(3.0)
+    tl.set_active_crop(crop_x=100, crop_y=50, crop_size=400)
+    tl.split(6.0)
+    tl.set_active_crop(crop_x=200, crop_y=150, crop_size=300)
+
+    assert len(tl.segments) == 3
+    # Delete middle segment (index 1)
+    tl.active_idx = 1
+    tl.delete()
+    assert len(tl.segments) == 2
+
+    # Verify remaining segments retain crop A and crop C
+    plan = build_segment_render_specs(
+        segments=tl.segments,
+        actual_dur=10.0,
+        source_video=str(tmp_path / "input.mp4"),
+        workspace=tmp_path
+    )
+    assert plan["segments"][0]["crop_size"] == 500
+    assert plan["segments"][0]["crop_x"] == 0
+    assert plan["segments"][1]["crop_size"] == 300
+    assert plan["segments"][1]["crop_x"] == 200
+
+
+def test_single_segment_backward_compatibility(tmp_path):
+    """Section 8.E: Single segment backward compatibility does not trigger multi-segment concat."""
+    from src.video_ops import build_segment_render_specs
+
+    segments = [{"start": 1.0, "end": 8.0, "crop_x": 50, "crop_y": 60, "crop_size": 800}]
+    plan = build_segment_render_specs(
+        segments=segments,
+        actual_dur=10.0,
+        source_video=str(tmp_path / "input.mp4"),
+        workspace=tmp_path
+    )
+
+    assert plan["is_multisegment"] is False
+    assert plan["concat_cmd"] is None
+    assert len(plan["segments"]) == 1
+    assert plan["segments"][0]["crop_x"] == 50
+    assert plan["segments"][0]["crop_y"] == 60
+    assert plan["segments"][0]["crop_size"] == 800
+
+
+def test_server_render_pipeline_concat_after_transforms_order(monkeypatch, tmp_path):
+    """Section 8.F: Verify that final concat happens AFTER each segment's crop/scale transformation."""
+    import io
+    import json
+    import subprocess
+    from src.server import ShortsAIHandler
+
+    executed_cmds = []
+    def mock_run(cmd, *args, **kwargs):
+        executed_cmds.append(list(cmd))
+        out_target = cmd[-1]
+        if str(out_target).endswith(".mp4"):
+            with open(out_target, "wb") as f:
+                f.write(b"dummy mp4")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(subprocess, "run", mock_run)
+    monkeypatch.setattr("src.server.get_duration", lambda p: 10.0)
+    monkeypatch.setattr("src.video_ops.has_audio_stream", lambda p: True)
+
+    rendered_call = {}
+    def mock_render_main_video(*args, **kwargs):
+        rendered_call["args"] = args
+        rendered_call["kwargs"] = kwargs
+        output_path = args[1]
+        with open(output_path, "wb") as f:
+            f.write(b"rendered final video")
+
+    monkeypatch.setattr("src.server.render_main_video", mock_render_main_video)
+
+    segments = [
+        {"start": 0.0, "end": 5.0, "crop_x": 0, "crop_y": 0, "crop_size": 500},
+        {"start": 5.0, "end": 10.0, "crop_x": 100, "crop_y": 50, "crop_size": 400}
+    ]
+
+    boundary = "----TestBoundaryPipelineOrder"
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="video"; filename="test.mp4"\r\n'
+        f"Content-Type: video/mp4\r\n\r\n"
+        f"fake video content\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="mode"\r\n\r\n'
+        f"main\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="segments"\r\n\r\n'
+        f"{json.dumps(segments)}\r\n"
+        f"--{boundary}--\r\n"
+    ).encode("utf-8")
+
+    class DummyHandler(ShortsAIHandler):
+        def __init__(self):
+            self.path = "/render"
+            self.client_address = ("127.0.0.1", 12345)
+            self.headers = {
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Content-Length": str(len(body))
+            }
+            self.rfile = io.BytesIO(body)
+            self.wfile = io.BytesIO()
+            self.response_code = None
+            self.response_headers = {}
+            self.error_msg = None
+
+        def send_response(self, code, message=None):
+            self.response_code = code
+
+        def send_header(self, keyword, value):
+            self.response_headers[keyword] = value
+
+        def end_headers(self):
+            pass
+
+        def send_error(self, code, message=None, explain=None):
+            self.response_code = code
+            self.error_msg = message
+
+        def log_message(self, format, *args):
+            pass
+
+    handler = DummyHandler()
+    handler.do_POST()
+
+    assert handler.response_code == 200
+
+    # At least 3 subprocess commands: seg_0, seg_1, then concat
+    assert len(executed_cmds) >= 3
+
+    # Segment 0 transform must be first
+    assert "-vf" in executed_cmds[0]
+    assert "crop=500:500:0:0,scale=1002:1002" in executed_cmds[0][executed_cmds[0].index("-vf") + 1]
+
+    # Segment 1 transform must be second
+    assert "-vf" in executed_cmds[1]
+    assert "crop=400:400:100:50,scale=1002:1002" in executed_cmds[1][executed_cmds[1].index("-vf") + 1]
+
+    # Concat must be third (AFTER both transforms)
+    assert "-f" in executed_cmds[2] and executed_cmds[2][executed_cmds[2].index("-f") + 1] == "concat"
+
+    # Final composition received concat.mp4 with normalized crop
+    assert rendered_call["args"][5] == 0     # crop_x
+    assert rendered_call["args"][6] == 0     # crop_y
+    assert rendered_call["args"][7] == 1002  # crop_size
+
+
+def test_server_render_curiosity_mode_with_distinct_crops(monkeypatch, tmp_path):
+    """Verify curiosity mode with multi-segment input properly calculates cut_time and preserves per-clip crops."""
+    import io
+    import json
+    import subprocess
+    from src.server import ShortsAIHandler
+
+    executed_cmds = []
+    def mock_run(cmd, *args, **kwargs):
+        executed_cmds.append(list(cmd))
+        out_target = cmd[-1]
+        if str(out_target).endswith(".mp4"):
+            with open(out_target, "wb") as f:
+                f.write(b"dummy mp4")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(subprocess, "run", mock_run)
+    monkeypatch.setattr("src.server.get_duration", lambda p: 10.0)
+    monkeypatch.setattr("src.video_ops.has_audio_stream", lambda p: True)
+
+    curiosity_call = {}
+    def mock_render_curiosity_video(*args, **kwargs):
+        curiosity_call["args"] = args
+        curiosity_call["kwargs"] = kwargs
+        output_path = args[1]
+        with open(output_path, "wb") as f:
+            f.write(b"rendered curiosity video")
+
+    monkeypatch.setattr("src.server.render_curiosity_video", mock_render_curiosity_video)
+
+    segments = [
+        {"start": 0.0, "end": 4.0, "crop_x": 10, "crop_y": 20, "crop_size": 900},
+        {"start": 4.0, "end": 10.0, "crop_x": 100, "crop_y": 150, "crop_size": 720}
+    ]
+
+    boundary = "----TestBoundaryCuriosityPerClip"
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="video"; filename="test.mp4"\r\n'
+        f"Content-Type: video/mp4\r\n\r\n"
+        f"fake video content\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="mode"\r\n\r\n'
+        f"curiosity\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="segments"\r\n\r\n'
+        f"{json.dumps(segments)}\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="caption_main"\r\n\r\n'
+        f"Wait for the end\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="caption_curiosity"\r\n\r\n'
+        f"Unbelievable reveal\r\n"
+        f"--{boundary}--\r\n"
+    ).encode("utf-8")
+
+    class DummyHandler(ShortsAIHandler):
+        def __init__(self):
+            self.path = "/render"
+            self.client_address = ("127.0.0.1", 12345)
+            self.headers = {
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Content-Length": str(len(body))
+            }
+            self.rfile = io.BytesIO(body)
+            self.wfile = io.BytesIO()
+            self.response_code = None
+            self.response_headers = {}
+            self.error_msg = None
+
+        def send_response(self, code, message=None):
+            self.response_code = code
+
+        def send_header(self, keyword, value):
+            self.response_headers[keyword] = value
+
+        def end_headers(self):
+            pass
+
+        def send_error(self, code, message=None, explain=None):
+            self.response_code = code
+            self.error_msg = message
+
+        def log_message(self, format, *args):
+            pass
+
+    handler = DummyHandler()
+    handler.do_POST()
+
+    assert handler.response_code == 200
+
+    # Check segment transforms
+    assert "crop=900:900:10:20,scale=1002:1002" in executed_cmds[0][executed_cmds[0].index("-vf") + 1]
+    assert "crop=720:720:100:150,scale=1002:1002" in executed_cmds[1][executed_cmds[1].index("-vf") + 1]
+
+    # Check curiosity render arguments
+    # render_curiosity_video args: source_video, output_video, hook_overlay, reveal_overlay, start_time, cut_time, end_time, crop_x, crop_y, crop_size
+    args = curiosity_call["args"]
+    assert "concat.mp4" in args[0]
+    assert args[4] == 0.0    # start_time
+    assert args[5] == 4.0    # cut_time matches segment 0 duration (4.0s)
+    assert args[6] == 10.0   # end_time
+    assert args[7] == 0      # crop_x normalized
+    assert args[8] == 0      # crop_y normalized
+    assert args[9] == 1002   # crop_size normalized

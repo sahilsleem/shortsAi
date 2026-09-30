@@ -1600,6 +1600,7 @@
                 updatePlayhead(segments[activeSegmentIndex].end);
             } else if (hit.type === 'segment') {
                 if (activeSegmentIndex !== hit.index) {
+                    saveActiveSegmentCrop();
                     activeSegmentIndex = hit.index;
                     renderTimeline();
                     loadSegmentCrop(activeSegmentIndex);
@@ -1805,6 +1806,7 @@
         // Split
         btnSplit.onclick = () => {
             if (segments.length === 0) return;
+            saveActiveSegmentCrop();
             const t = videoElement.currentTime;
             const seg = segments[activeSegmentIndex];
             if (t > seg.start + 0.05 && t < seg.end - 0.05) {
@@ -1881,11 +1883,13 @@
                     }
                 }
                 if (foundIdx !== -1 && foundIdx !== activeSegmentIndex) {
+                    saveActiveSegmentCrop();
                     activeSegmentIndex = foundIdx;
                     renderTimeline();
                     loadSegmentCrop(activeSegmentIndex);
                 } else if (curTime >= seg.end) {
                     if (activeSegmentIndex < segments.length - 1) {
+                        saveActiveSegmentCrop();
                         activeSegmentIndex++;
                         const nextSeg = segments[activeSegmentIndex];
                         if (Math.abs(curTime - nextSeg.start) > 0.05) {

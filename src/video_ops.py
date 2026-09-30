@@ -536,3 +536,114 @@ def append_cover_frame(
             "output_video": output_video if os.path.exists(output_video) else rendered_video
         }
 
+
+def build_segment_render_specs(
+    segments: list | None,
+    actual_dur: float,
+    default_crop: dict | None = None,
+    source_video: str = "input.mp4",
+    workspace: str | Path = ".",
+    has_audio: bool = True
+) -> dict:
+    """
+    Builds the per-segment render specification and concat plan for timeline segments.
+    Ensures that each segment is independently cropped and scaled to 1002x1002 before
+    concatenation, preserving distinct crop/zoom/pan settings for each clip.
+    """
+    if default_crop is None:
+        default_crop = {}
+    def_x = int(default_crop.get("crop_x", 0))
+    def_y = int(default_crop.get("crop_y", 0))
+    def_size = int(default_crop.get("crop_size", 1002))
+
+    workspace_path = Path(workspace)
+
+    parsed_segments = []
+    if segments and len(segments) > 0:
+        for i, seg in enumerate(segments):
+            s_start = max(0.0, float(seg.get('start', 0.0)))
+            s_end = min(actual_dur, float(seg.get('end', actual_dur)))
+            s_dur = max(0.1, s_end - s_start)
+            s_crop_x = int(seg.get('crop_x', def_x))
+            s_crop_y = int(seg.get('crop_y', def_y))
+            s_crop_size = int(seg.get('crop_size', def_size))
+            seg_out = workspace_path / f"seg_{i}.mp4"
+            vf = f"crop={s_crop_size}:{s_crop_size}:{s_crop_x}:{s_crop_y},scale=1002:1002"
+
+            cmd = [
+                get_ffmpeg_path(), "-y",
+                "-ss", str(s_start), "-t", str(s_dur),
+                "-i", str(source_video),
+                "-vf", vf,
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-r", "30"
+            ]
+            if has_audio:
+                cmd.extend(["-c:a", "aac", "-b:a", "192k", "-ar", "44100"])
+            else:
+                cmd.append("-an")
+            cmd.append(str(seg_out))
+
+            parsed_segments.append({
+                "index": i,
+                "start": s_start,
+                "end": s_end,
+                "duration": s_dur,
+                "crop_x": s_crop_x,
+                "crop_y": s_crop_y,
+                "crop_size": s_crop_size,
+                "vf": vf,
+                "output_path": str(seg_out),
+                "ffmpeg_cmd": cmd
+            })
+
+    if not parsed_segments:
+        parsed_segments.append({
+            "index": 0,
+            "start": 0.0,
+            "end": actual_dur,
+            "duration": actual_dur,
+            "crop_x": def_x,
+            "crop_y": def_y,
+            "crop_size": def_size,
+            "vf": f"crop={def_size}:{def_size}:{def_x}:{def_y},scale=1002:1002",
+            "output_path": str(source_video),
+            "ffmpeg_cmd": []
+        })
+
+    is_multisegment = len(parsed_segments) > 1
+
+    concat_txt_path = workspace_path / "concat.txt"
+    concat_out_path = workspace_path / "concat.mp4"
+
+    concat_lines = []
+    for s in parsed_segments:
+        seg_file_path = Path(s["output_path"]).resolve().as_posix()
+        concat_lines.append(f"file '{seg_file_path}'")
+    concat_txt_content = "\n".join(concat_lines) + "\n"
+
+    concat_cmd = [
+        get_ffmpeg_path(), "-y",
+        "-f", "concat", "-safe", "0",
+        "-i", str(concat_txt_path),
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-r", "30"
+    ]
+    if has_audio:
+        concat_cmd.extend(["-c:a", "aac", "-b:a", "192k", "-ar", "44100"])
+    else:
+        concat_cmd.append("-an")
+    concat_cmd.append(str(concat_out_path))
+
+    total_dur = sum(s["duration"] for s in parsed_segments) if is_multisegment else parsed_segments[0]["duration"]
+    cut_time = max(0.001, min(parsed_segments[0]["duration"], total_dur - 0.001))
+
+    return {
+        "is_multisegment": is_multisegment,
+        "segments": parsed_segments,
+        "concat_cmd": concat_cmd if is_multisegment else None,
+        "concat_txt_path": str(concat_txt_path),
+        "concat_txt_content": concat_txt_content,
+        "concat_output_path": str(concat_out_path),
+        "total_duration": total_dur,
+        "cut_time": cut_time
+    }
+
