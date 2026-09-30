@@ -610,6 +610,9 @@ def test_mobile_creator_redesign_structure():
     assert 'id="result-video"' in html
     assert 'id="publishing-section"' in html
 
+    # 6. Verify Branding was renamed to Watermark with no Saba Bollywood in visible UI
+    assert 'Saba Bollywood' not in html
+
 def test_compact_mobile_preview_viewport():
     """Verify that the preview viewport is compact and constrained to prevent page height explosion."""
     from pathlib import Path
