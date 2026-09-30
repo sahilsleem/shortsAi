@@ -624,3 +624,35 @@ def test_compact_mobile_preview_viewport():
     assert 'fitPreviewContainer' in html
     assert 'previewContainer.onmousedown = startDrag' in html
     assert 'previewContainer.ontouchstart = startDrag' in html
+
+def test_neutral_caption_ui():
+    """Verify neutral caption placeholders, emoji inputs without placeholders, and absence of Bollywood examples."""
+    from pathlib import Path
+    import re
+    html = Path("static/index.html").read_text(encoding="utf-8")
+
+    # 1. Main caption placeholder
+    assert 'placeholder="Enter your main caption..."' in html
+
+    # 2. Curiosity caption placeholder
+    assert 'placeholder="Enter your curiosity caption..."' in html
+
+    # 3. AI context placeholder
+    assert 'placeholder="Tell AI what this short is about..."' in html
+
+    # 4. Generate button text has no emojis
+    assert re.search(r'<button[^>]*id="btn-gemini-generate"[^>]*>\s*Generate Captions\s*</button>', html)
+
+    # 5. Emoji inputs have no placeholder
+    assert 'id="caption-emoji-main"' in html
+    main_emoji_match = re.search(r'<input[^>]*id="caption-emoji-main"[^>]*>', html)
+    assert main_emoji_match and 'placeholder' not in main_emoji_match.group(0)
+
+    assert 'id="caption-emoji-curiosity"' in html
+    curiosity_emoji_match = re.search(r'<input[^>]*id="caption-emoji-curiosity"[^>]*>', html)
+    assert curiosity_emoji_match and 'placeholder' not in curiosity_emoji_match.group(0)
+
+    # 6. No Bollywood / celebrity examples
+    assert 'Salman' not in html
+    assert 'Arpita' not in html
+    assert 'Bollywood' not in html

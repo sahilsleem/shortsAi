@@ -205,7 +205,7 @@
             outline: none;
             border-color: var(--accent);
             background: #ffffff;
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+            box-shadow: var(--shadow-focus);
         }
         textarea {
             resize: vertical;
@@ -537,7 +537,7 @@
                         <div class="field-label-row">
                             <span class="field-label">Main Caption</span>
                         </div>
-                        <textarea id="caption-main" placeholder="E.g. Salman was doing it wrong, but then..."></textarea>
+                        <textarea id="caption-main" placeholder="Enter your main caption..."></textarea>
                         <div class="caption-sub-row">
                             <div style="flex: 2;">
                                 <span class="sub-label">Font</span>
@@ -551,7 +551,7 @@
                             </div>
                             <div style="flex: 1;">
                                 <span class="sub-label">Emoji <span class="optional-tag">Opt</span></span>
-                                <input type="text" id="caption-emoji-main" placeholder="🤔" style="height: 36px; text-align: center; font-size: 15px;">
+                                <input type="text" id="caption-emoji-main" style="height: 36px; text-align: center; font-size: 15px;">
                             </div>
                         </div>
                     </div>
@@ -562,7 +562,7 @@
                             <div class="field-label-row">
                                 <span class="field-label">Curiosity Caption</span>
                             </div>
-                            <textarea id="caption-curiosity" placeholder="E.g. Arpita stepped in!"></textarea>
+                            <textarea id="caption-curiosity" placeholder="Enter your curiosity caption..."></textarea>
                             <div class="caption-sub-row">
                                 <div style="flex: 2;">
                                     <span class="sub-label">Font</span>
@@ -576,7 +576,7 @@
                                 </div>
                                 <div style="flex: 1;">
                                     <span class="sub-label">Emoji <span class="optional-tag">Opt</span></span>
-                                    <input type="text" id="caption-emoji-curiosity" placeholder="🔥" style="height: 36px; text-align: center; font-size: 15px;">
+                                    <input type="text" id="caption-emoji-curiosity" style="height: 36px; text-align: center; font-size: 15px;">
                                 </div>
                             </div>
                         </div>
@@ -591,14 +591,14 @@
                     <div class="field-label-row">
                         <span class="field-label">Context</span>
                     </div>
-                    <textarea id="gemini-context" placeholder="Tell AI what this Short is about..."></textarea>
+                    <textarea id="gemini-context" placeholder="Tell AI what this short is about..."></textarea>
 
-                    <button type="button" class="btn btn-primary" id="btn-gemini-generate" style="margin-top: 8px; height: 38px; font-size: 13px;">✨ Generate Captions</button>
+                    <button type="button" class="btn btn-primary" id="btn-gemini-generate" style="margin-top: 8px; height: 38px; font-size: 13px;">Generate Captions</button>
                     <div id="gemini-error" style="display: none; color: #dc2626; font-size: 12px; font-weight: 500; margin-top: 6px; line-height: 1.4;"></div>
 
                     <div id="gemini-result-card" style="display: none; margin-top: 10px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <div style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px;">Generated Captions</div>
+                            <div style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Generated Captions</div>
                             <div id="gemini-provider-badge" style="font-size: 11px; font-weight: 600; color: #94a3b8;"></div>
                         </div>
 
@@ -609,7 +609,7 @@
 
                         <div style="margin-bottom: 6px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                                <span style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase;">Main Caption</span>
+                                <span style="font-size: 12px; font-weight: 600; color: #1e293b;">Main Caption</span>
                                 <span id="gemini-preview-main-emoji" style="font-size: 15px;"></span>
                             </div>
                             <div id="gemini-preview-main" style="font-size: 13px; font-weight: 600; color: #0f172a; line-height: 1.4;"></div>
@@ -617,7 +617,7 @@
 
                         <div style="margin-bottom: 10px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                                <span style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase;">Curiosity Caption</span>
+                                <span style="font-size: 12px; font-weight: 600; color: #1e293b;">Curiosity Caption</span>
                                 <span id="gemini-preview-curiosity-emoji" style="font-size: 15px;"></span>
                             </div>
                             <div id="gemini-preview-curiosity" style="font-size: 13px; font-weight: 600; color: #0f172a; line-height: 1.4;"></div>
@@ -902,7 +902,7 @@
 
             btnGeminiGenerate.disabled = true;
             btnGeminiRetry.disabled = true;
-            btnGeminiGenerate.innerText = "✨ Generating...";
+            btnGeminiGenerate.innerText = "Generating...";
             geminiError.style.display = "none";
             geminiError.innerText = "";
 
@@ -955,7 +955,7 @@
             } finally {
                 btnGeminiGenerate.disabled = false;
                 btnGeminiRetry.disabled = false;
-                btnGeminiGenerate.innerText = "✨ Generate";
+                btnGeminiGenerate.innerText = "Generate Captions";
             }
         }
 
